@@ -3,6 +3,8 @@ services:
   - type: web
     name: hris-backend
     runtime: node
+    repo: https://github.com/Yesagain-site/HRIS
+    branch: backend
     buildCommand: npm install && npm run build
     startCommand: npm run start:prod
     envVars:
@@ -13,6 +15,6 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: FRONTEND_URL
-        sync: false
+        value: https://yespeople.netlify.app
       - key: PORT
         value: 5000
