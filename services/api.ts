@@ -1,8 +1,12 @@
-// services/api.ts - Complete API Service with All Endpoints
-
 // Base API service
 class APIService {
-  private baseURL: string = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+  // Use type assertion to tell TypeScript this exists
+  private baseURL: string = (import.meta as any).env.VITE_API_URL || 'http://localhost:5000';
+
+  constructor() {
+    console.log('🔍 API Base URL:', this.baseURL);
+    console.log('🔍 All env vars:', (import.meta as any).env);
+  }
 
   private getAuthHeaders() {
     const token = localStorage.getItem('access_token') || localStorage.getItem('yespeople_jwt_token');
@@ -16,6 +20,7 @@ class APIService {
     
     return headers;
   }
+
 
   // Generic GET request
   async get<T>(endpoint: string): Promise<T> {
