@@ -6,13 +6,12 @@ import { json, urlencoded } from 'express';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   
-  // 🔥 INCREASE PAYLOAD SIZE LIMIT 🔥
+  // Increase payload size limit
   app.use(json({ limit: '10mb' }));
   app.use(urlencoded({ extended: true, limit: '10mb' }));
   
-  // ✅ Use environment variable for CORS origin
+  // CORS configuration
   const frontendUrl = process.env.FRONTEND_URL || 'https://yespeople.netlify.app';
-  
   app.enableCors({
     origin: [frontendUrl, 'https://yespeople.netlify.app', 'http://localhost:3000'],
     credentials: true,
@@ -20,11 +19,14 @@ async function bootstrap() {
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
   });
   
-  // ✅ Use PORT from environment variable
+  // ⭐ CRITICAL: Use PORT from environment (Render sets this to 10000 by default)
   const port = process.env.PORT || 3000;
-  await app.listen(port, '0.0.0.0');
-
   
-  console.log(`🚀 Backend running on http://localhost:${port}`);
+  // ⭐ CRITICAL: Listen on 0.0.0.0 to accept external connections
+  await app.listen(port, '0.0.0.0');
+  
+  // Log the actual port being used
+  console.log(`🚀 Backend is running on port: ${port}`);
+  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
 }
 bootstrap();
