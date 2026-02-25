@@ -11,7 +11,7 @@ async function bootstrap() {
   app.use(urlencoded({ extended: true, limit: '10mb' }));
   
   // ✅ Use environment variable for CORS origin
-  const frontendUrl = process.env.FRONTEND_URL || 'https://yespeople.netlify.app/';
+  const frontendUrl = process.env.FRONTEND_URL || 'https://yespeople.netlify.app';
   
   app.enableCors({
     origin: [frontendUrl, 'https://yespeople.netlify.app', 'http://localhost:3000'],
@@ -22,7 +22,8 @@ async function bootstrap() {
   
   // ✅ Use PORT from environment variable
   const port = process.env.PORT || 3000;
-  await app.listen(port);
+  await app.listen(port, '0.0.0.0');
+
   
   console.log(`🚀 Backend running on http://localhost:${port}`);
 }
