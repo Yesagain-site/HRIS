@@ -1,0 +1,7 @@
+{
+  "name": "Copy of YesPeople HRIS",
+  "description": "A comprehensive Human Resources Information System to manage employee data, payroll, attendance, and more. YesPeople streamlines HR processes for efficiency and accuracy.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
