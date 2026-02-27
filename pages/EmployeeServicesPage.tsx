@@ -1,91 +1,21 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { Card, Button, Modal, Input, Select, Textarea, ConfirmationModal } from '../components/UI';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { Card, Button, Modal, Input, Select, Textarea } from '../components/UI';
 import { useHRData } from '../hooks/useHRData';
 import { useAuth } from '../contexts/AuthContext';
-import { LeaveRequest, PermissionRequest, CashAdvanceRequest, ResignationRequest, RequestStatus, Employee } from '../types';
 import { PlusIcon } from '../components/Icons';
 
-// SAFE: Helper function to safely get data from useHRData
-const useSafeHRData = () => {
-  try {
-    const data = useHRData();
-    // Ensure all data is arrays, not undefined
-    return {
-      employees: Array.isArray(data?.employees) ? data.employees : [],
-      leaveRequests: Array.isArray(data?.leaveRequests) ? data.leaveRequests : [],
-      permissionRequests: Array.isArray(data?.permissionRequests) ? data.permissionRequests : [],
-      cashAdvanceRequests: Array.isArray(data?.cashAdvanceRequests) ? data.cashAdvanceRequests : [],
-      resignations: Array.isArray(data?.resignations) ? data.resignations : [],
-      updateRequestStatus: data?.updateRequestStatus || (() => {}),
-      addLeaveRequest: data?.addLeaveRequest || (() => {}),
-      addPermissionRequest: data?.addPermissionRequest || (() => {}),
-      addCashAdvanceRequest: data?.addCashAdvanceRequest || (() => {}),
-      addResignationRequest: data?.addResignationRequest || (() => {}),
-    };
-  } catch (error) {
-    console.error('Error in useHRData:', error);
-    // Return empty arrays if useHRData fails
-    return {
-      employees: [],
-      leaveRequests: [],
-      permissionRequests: [],
-      cashAdvanceRequests: [],
-      resignations: [],
-      updateRequestStatus: () => {},
-      addLeaveRequest: () => {},
-      addPermissionRequest: () => {},
-      addCashAdvanceRequest: () => {},
-      addResignationRequest: () => {},
-    };
-  }
-};
-
-// SAFE: Helper function to safely get auth data
-const useSafeAuth = () => {
-  try {
-    const auth = useAuth();
-    return {
-      employeeDetails: auth?.employeeDetails || null,
-      hasPermission: auth?.hasPermission || (() => false),
-      currentUser: auth?.currentUser || null,
-    };
-  } catch (error) {
-    console.error('Error in useAuth:', error);
-    return {
-      employeeDetails: null,
-      hasPermission: () => false,
-      currentUser: null,
-    };
-  }
-};
-
-// --- Helper Functions & Components ---
-
-const getStatusBadge = (status: RequestStatus | string) => {
-  if (typeof status === 'string') {
-    status = status as RequestStatus;
-  }
-  
-  switch (status) {
-    case RequestStatus.APPROVED:
-      return 'bg-green-100 text-green-800';
-    case RequestStatus.REJECTED:
-      return 'bg-red-100 text-red-800';
-    case RequestStatus.PENDING:
-    default:
-      return 'bg-yellow-100 text-yellow-800';
-  }
-};
-
-// --- New Request Modal (For Employees) ---
+// --- New Request Modal (exported for AttendancePage) ---
 export const NewRequestModal: React.FC<{
   isOpen: boolean,
   onClose: () => void,
 }> = ({ isOpen, onClose }) => {
   const { 
-    addLeaveRequest, addPermissionRequest, addCashAdvanceRequest, addResignationRequest 
-  } = useSafeHRData();
-  const { employeeDetails } = useSafeAuth();
+    addLeaveRequest, 
+    addPermissionRequest, 
+    addCashAdvanceRequest, 
+    addResignationRequest 
+  } = useHRData();
+  const { employeeDetails } = useAuth();
   const [requestType, setRequestType] = useState('leave');
   const [formData, setFormData] = useState<any>({ reason: '' });
   const [timeError, setTimeError] = useState<string | null>(null);
@@ -110,7 +40,7 @@ export const NewRequestModal: React.FC<{
     }
   }, [formData.startTime, formData.endTime, requestType]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (timeError) return;
     if (!employeeDetails) {
@@ -118,40 +48,45 @@ export const NewRequestModal: React.FC<{
       return;
     }
     
-    const commonData = { 
-      employeeId: employeeDetails.id || 'unknown', 
-      reason: formData.reason || '' 
-    };
+    const employeeName = `${employeeDetails.firstName || ''} ${employeeDetails.lastName || ''}`.trim();
     
     try {
       switch (requestType) {
         case 'leave':
-          addLeaveRequest({ 
-            ...commonData, 
+          await addLeaveRequest({ 
+            employeeId: employeeDetails.id,
+            employeeName,
             leaveType: formData.leaveType || 'Annual', 
-            startDate: formData.startDate || new Date().toISOString().split('T')[0], 
-            endDate: formData.endDate || new Date().toISOString().split('T')[0] 
+            startDate: formData.startDate, 
+            endDate: formData.endDate,
+            reason: formData.reason || ''
           });
           break;
         case 'permission':
-          addPermissionRequest({ 
-            ...commonData, 
-            permissionDate: formData.permissionDate || new Date().toISOString().split('T')[0], 
-            startTime: formData.startTime || '09:00', 
-            endTime: formData.endTime || '10:00' 
+          await addPermissionRequest({ 
+            employeeId: employeeDetails.id,
+            employeeName,
+            permissionDate: formData.permissionDate,
+            startTime: formData.startTime,
+            endTime: formData.endTime,
+            reason: formData.reason || ''
           });
           break;
         case 'cash':
-          addCashAdvanceRequest({ 
-            ...commonData, 
-            amount: parseFloat(formData.amount) || 0, 
-            repaymentDate: formData.repaymentDate || new Date().toISOString().split('T')[0] 
+          await addCashAdvanceRequest({ 
+            employeeId: employeeDetails.id,
+            employeeName,
+            amount: parseFloat(formData.amount) || 0,
+            repaymentDate: formData.repaymentDate,
+            reason: formData.reason || ''
           });
           break;
         case 'resignation':
-          addResignationRequest({ 
-            ...commonData, 
-            proposedLastDay: formData.proposedLastDay || new Date().toISOString().split('T')[0] 
+          await addResignationRequest({ 
+            employeeId: employeeDetails.id,
+            employeeName,
+            proposedLastDay: formData.proposedLastDay,
+            reason: formData.reason || ''
           });
           break;
       }
@@ -217,53 +152,92 @@ export const NewRequestModal: React.FC<{
   );
 };
 
-// --- Main Page Component with SAFE error handling ---
+// --- Main Page Component ---
 const EmployeeServicesPage: React.FC = () => {
-  // SAFE: Use safe hooks
   const { 
     employees,
     leaveRequests, 
     permissionRequests, 
     cashAdvanceRequests, 
-    resignations,
-    updateRequestStatus 
-  } = useSafeHRData();
+    resignationRequests,
+    updateRequestStatus,
+    loadServiceRequests 
+  } = useHRData();
   
-  const { employeeDetails, hasPermission } = useSafeAuth();
+  const { employeeDetails, hasPermission } = useAuth();
   const canManage = hasPermission('canManageServiceRequests');
   
   const [activeTab, setActiveTab] = useState<'leave' | 'permission' | 'cash' | 'resignation'>('leave');
   const [isNewRequestModalOpen, setIsNewRequestModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const dataLoadedRef = useRef(false);
+  
+  // Confirmation modal state
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [pendingAction, setPendingAction] = useState<{
+      type: 'leave' | 'permission' | 'cash' | 'resignation';
+      id: string;
+      action: 'approve' | 'reject';
+      reason?: string;
+  } | null>(null);
 
-  // SAFE: Use effect with error handling
   useEffect(() => {
-    try {
-      setLoading(true);
-      // Simulate loading delay
-      const timer = setTimeout(() => {
-        setLoading(false);
-      }, 500);
+      let isMounted = true;
       
-      return () => clearTimeout(timer);
-    } catch (error) {
-      console.error('Error in useEffect:', error);
-      setLoading(false);
-    }
-  }, []);
+      const loadData = async () => {
+          if (dataLoadedRef.current) {
+              console.log('📊 Data already loaded, skipping...');
+              return;
+          }
+          
+          try {
+              setLoading(true);
+              console.log('📊 Starting to load service requests...');
+              
+              await loadServiceRequests();
+              
+              if (isMounted) {
+                  dataLoadedRef.current = true;
+                  console.log('✅ Service requests loaded in page');
+              }
+          } catch (error) {
+              console.error('Error loading service requests:', error);
+          } finally {
+              if (isMounted) {
+                  setLoading(false);
+                  console.log('🔄 Loading set to false');
+              }
+          }
+      };
+      
+      loadData();
+      
+      return () => {
+          isMounted = false;
+      };
+  }, [loadServiceRequests]);
 
-  // SAFE: Create employee map with error handling
+  useEffect(() => {
+      console.log('📊 Loading state changed to:', loading);
+  }, [loading]);
+
+  useEffect(() => {
+    console.log('📊 leaveRequests in page:', leaveRequests);
+    console.log('📊 permissionRequests in page:', permissionRequests);
+    console.log('📊 cashAdvanceRequests in page:', cashAdvanceRequests);
+    console.log('📊 resignationRequests in page:', resignationRequests);
+  }, [leaveRequests, permissionRequests, cashAdvanceRequests, resignationRequests]);
+
   const employeeMap = useMemo(() => {
     try {
       if (!Array.isArray(employees)) return new Map();
-      return new Map(employees.map(e => [e.id, e.name]));
+      return new Map(employees.map(e => [e.id, `${e.firstName} ${e.lastName}`]));
     } catch (error) {
       console.error('Error creating employee map:', error);
       return new Map();
     }
   }, [employees]);
 
-  // SAFE: Filter requests with error handling
   const requestsToShow = useMemo(() => {
     try {
       const filterFn = (req: any) => {
@@ -275,8 +249,8 @@ const EmployeeServicesPage: React.FC = () => {
         if (!Array.isArray(arr)) return [];
         return arr.filter(filterFn).sort((a, b) => {
           try {
-            const dateA = a.requestDate ? new Date(a.requestDate).getTime() : 0;
-            const dateB = b.requestDate ? new Date(b.requestDate).getTime() : 0;
+            const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+            const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
             return dateB - dateA;
           } catch {
             return 0;
@@ -285,10 +259,10 @@ const EmployeeServicesPage: React.FC = () => {
       };
       
       return {
-        leave: safeSort(leaveRequests),
-        permission: safeSort(permissionRequests),
-        cash: safeSort(cashAdvanceRequests),
-        resignation: safeSort(resignations),
+        leave: safeSort(leaveRequests || []),
+        permission: safeSort(permissionRequests || []),
+        cash: safeSort(cashAdvanceRequests || []),
+        resignation: safeSort(resignationRequests || []),
       };
     } catch (error) {
       console.error('Error filtering requests:', error);
@@ -299,22 +273,86 @@ const EmployeeServicesPage: React.FC = () => {
         resignation: [],
       };
     }
-  }, [leaveRequests, permissionRequests, cashAdvanceRequests, resignations, canManage, employeeDetails]);
+  }, [leaveRequests, permissionRequests, cashAdvanceRequests, resignationRequests, canManage, employeeDetails]);
 
-  const handleUpdateRequest = (type: 'leave' | 'permission' | 'cash' | 'resignation', id: string, action: 'approve' | 'reject', reason?: string) => {
+  const handleUpdateRequest = async (
+    type: 'leave' | 'permission' | 'cash' | 'resignation', 
+    id: string, 
+    action: 'approve' | 'reject', 
+    reason?: string
+  ) => {
     try {
       if (!id) {
         alert('Invalid request ID');
         return;
       }
       
-      const status = action === 'approve' ? RequestStatus.APPROVED : RequestStatus.REJECTED;
-      updateRequestStatus(type, id, status, reason);
+      const status = action === 'approve' ? 'Approved' : 'Rejected';
+      await updateRequestStatus(type, id, status, reason);
       alert(`Request ${action}d successfully!`);
+      
+      dataLoadedRef.current = false;
+      await loadServiceRequests();
     } catch (error) {
       console.error('Error updating request:', error);
       alert('Failed to update request. Please try again.');
     }
+  };
+
+  const renderConfirmationModal = () => {
+    if (!pendingAction) return null;
+    
+    return (
+        <Modal
+            isOpen={showConfirmModal}
+            onClose={() => {
+                setShowConfirmModal(false);
+                setPendingAction(null);
+            }}
+            title={pendingAction.action === 'approve' ? 'Approve Request' : 'Reject Request'}
+        >
+            <div className="space-y-4">
+                <div className="flex items-center justify-center text-5xl mb-4">
+                    {pendingAction.action === 'approve' ? '✅' : '⚠️'}
+                </div>
+                <p className="text-center text-gray-700">
+                    {pendingAction.action === 'approve' 
+                        ? 'Are you sure you want to approve this request?' 
+                        : 'Are you sure you want to reject this request?'}
+                </p>
+                {pendingAction.reason && (
+                    <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-200">
+                        <p className="text-sm text-yellow-700">
+                            <strong>Rejection reason:</strong> {pendingAction.reason}
+                        </p>
+                    </div>
+                )}
+                <div className="flex justify-end gap-3 pt-4">
+                    <Button variant="secondary" onClick={() => {
+                        setShowConfirmModal(false);
+                        setPendingAction(null);
+                    }}>
+                        Cancel
+                    </Button>
+                    <Button 
+                        variant={pendingAction.action === 'approve' ? 'primary' : 'danger'}
+                        onClick={async () => {
+                            await handleUpdateRequest(
+                                pendingAction.type,
+                                pendingAction.id,
+                                pendingAction.action,
+                                pendingAction.reason
+                            );
+                            setShowConfirmModal(false);
+                            setPendingAction(null);
+                        }}
+                    >
+                        {pendingAction.action === 'approve' ? 'Approve' : 'Reject'}
+                    </Button>
+                </div>
+            </div>
+        </Modal>
+    );
   };
 
   const renderTable = (type: 'leave' | 'permission' | 'cash' | 'resignation') => {
@@ -330,153 +368,172 @@ const EmployeeServicesPage: React.FC = () => {
     let data: any[] = [];
     let renderRow: (req: any) => React.ReactNode;
 
-    try {
-      switch(type) {
-        case 'leave':
-          headers = [canManage && 'Employee', 'Type', 'Dates', 'Reason', 'Status', 'Manager Notes'].filter(Boolean) as string[];
-          data = requestsToShow.leave || [];
-          renderRow = (req: any) => (
-            <>
-              {canManage && <td className="px-4 py-3">{employeeMap.get(req.employeeId) || 'Unknown'}</td>}
-              <td className="px-4 py-3">{req.leaveType || '-'}</td>
-              <td className="px-4 py-3">{req.startDate || ''} to {req.endDate || ''}</td>
-              <td className="px-4 py-3 max-w-xs truncate" title={req.reason}>{req.reason || '-'}</td>
-              <td className="px-4 py-3">
-                <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusBadge(req.status || RequestStatus.PENDING)}`}>
-                  {req.status || 'Pending'}
-                </span>
-              </td>
-              <td className="px-4 py-3 max-w-xs truncate" title={req.managerNotes}>{req.managerNotes || '-'}</td>
-            </>
-          );
-          break;
-        case 'permission':
-          headers = [canManage && 'Employee', 'Date', 'Time', 'Reason', 'Status', 'Manager Notes'].filter(Boolean) as string[];
-          data = requestsToShow.permission || [];
-          renderRow = (req: any) => (
-            <>
-              {canManage && <td className="px-4 py-3">{employeeMap.get(req.employeeId) || 'Unknown'}</td>}
-              <td className="px-4 py-3">{req.permissionDate || '-'}</td>
-              <td className="px-4 py-3">{req.startTime || ''} to {req.endTime || ''}</td>
-              <td className="px-4 py-3 max-w-xs truncate" title={req.reason}>{req.reason || '-'}</td>
-              <td className="px-4 py-3">
-                <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusBadge(req.status || RequestStatus.PENDING)}`}>
-                  {req.status || 'Pending'}
-                </span>
-              </td>
-              <td className="px-4 py-3 max-w-xs truncate" title={req.managerNotes}>{req.managerNotes || '-'}</td>
-            </>
-          );
-          break;
-        case 'cash':
-          headers = [canManage && 'Employee', 'Amount', 'Repayment Date', 'Reason', 'Status', 'Manager Notes'].filter(Boolean) as string[];
-          data = requestsToShow.cash || [];
-          renderRow = (req: any) => (
-            <>
-              {canManage && <td className="px-4 py-3">{employeeMap.get(req.employeeId) || 'Unknown'}</td>}
-              <td className="px-4 py-3">
-                AED {req.amount ? req.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'}
-              </td>
-              <td className="px-4 py-3">{req.repaymentDate || '-'}</td>
-              <td className="px-4 py-3 max-w-xs truncate" title={req.reason}>{req.reason || '-'}</td>
-              <td className="px-4 py-3">
-                <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusBadge(req.status || RequestStatus.PENDING)}`}>
-                  {req.status || 'Pending'}
-                </span>
-              </td>
-              <td className="px-4 py-3 max-w-xs truncate" title={req.managerNotes}>{req.managerNotes || '-'}</td>
-            </>
-          );
-          break;
-        case 'resignation':
-          headers = [canManage && 'Employee', 'Proposed Last Day', 'Reason', 'Status', 'Manager Notes'].filter(Boolean) as string[];
-          data = requestsToShow.resignation || [];
-          renderRow = (req: any) => (
-            <>
-              {canManage && <td className="px-4 py-3">{employeeMap.get(req.employeeId) || 'Unknown'}</td>}
-              <td className="px-4 py-3">{req.proposedLastDay || '-'}</td>
-              <td className="px-4 py-3 max-w-xs truncate" title={req.reason}>{req.reason || '-'}</td>
-              <td className="px-4 py-3">
-                <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusBadge(req.status || RequestStatus.PENDING)}`}>
-                  {req.status || 'Pending'}
-                </span>
-              </td>
-              <td className="px-4 py-3 max-w-xs truncate" title={req.managerNotes}>{req.managerNotes || '-'}</td>
-            </>
-          );
-          break;
-      }
-    } catch (error) {
-      console.error('Error preparing table data:', error);
-      return (
-        <div className="text-center py-8 text-red-600">
-          Error loading table data
-        </div>
-      );
+    switch(type) {
+      case 'leave':
+        headers = [canManage && 'Employee', 'Type', 'Dates', 'Reason', 'Status', 'Manager Notes'].filter(Boolean) as string[];
+        data = requestsToShow.leave || [];
+        renderRow = (req: any) => (
+          <>
+            {canManage && <td className="px-4 py-3">{employeeMap.get(req.employeeId) || 'Unknown'}</td>}
+            <td className="px-4 py-3">{req.leaveType || '-'}</td>
+            <td className="px-4 py-3">{req.startDate || ''} to {req.endDate || ''}</td>
+            <td className="px-4 py-3 max-w-xs truncate" title={req.reason}>{req.reason || '-'}</td>
+            <td className="px-4 py-3">
+              <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusBadge(req.status)}`}>
+                {req.status || 'Pending'}
+              </span>
+            </td>
+            <td className="px-4 py-3 max-w-xs truncate" title={req.managerNotes}>{req.managerNotes || '-'}</td>
+          </>
+        );
+        break;
+      case 'permission':
+        headers = [canManage && 'Employee', 'Date', 'Time', 'Reason', 'Status', 'Manager Notes'].filter(Boolean) as string[];
+        data = requestsToShow.permission || [];
+        renderRow = (req: any) => (
+          <>
+            {canManage && <td className="px-4 py-3">{employeeMap.get(req.employeeId) || 'Unknown'}</td>}
+            <td className="px-4 py-3">{req.permissionDate || '-'}</td>
+            <td className="px-4 py-3">{req.startTime || ''} to {req.endTime || ''}</td>
+            <td className="px-4 py-3 max-w-xs truncate" title={req.reason}>{req.reason || '-'}</td>
+            <td className="px-4 py-3">
+              <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusBadge(req.status)}`}>
+                {req.status || 'Pending'}
+              </span>
+            </td>
+            <td className="px-4 py-3 max-w-xs truncate" title={req.managerNotes}>{req.managerNotes || '-'}</td>
+          </>
+        );
+        break;
+      case 'cash':
+        headers = [canManage && 'Employee', 'Amount', 'Repayment Date', 'Reason', 'Status', 'Manager Notes'].filter(Boolean) as string[];
+        data = requestsToShow.cash || [];
+        renderRow = (req: any) => (
+          <>
+            {canManage && <td className="px-4 py-3">{employeeMap.get(req.employeeId) || 'Unknown'}</td>}
+            <td className="px-4 py-3">
+              AED {req.amount ? req.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'}
+            </td>
+            <td className="px-4 py-3">{req.repaymentDate || '-'}</td>
+            <td className="px-4 py-3 max-w-xs truncate" title={req.reason}>{req.reason || '-'}</td>
+            <td className="px-4 py-3">
+              <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusBadge(req.status)}`}>
+                {req.status || 'Pending'}
+              </span>
+            </td>
+            <td className="px-4 py-3 max-w-xs truncate" title={req.managerNotes}>{req.managerNotes || '-'}</td>
+          </>
+        );
+        break;
+      case 'resignation':
+        headers = [canManage && 'Employee', 'Proposed Last Day', 'Reason', 'Status', 'Manager Notes'].filter(Boolean) as string[];
+        data = requestsToShow.resignation || [];
+        renderRow = (req: any) => (
+          <>
+            {canManage && <td className="px-4 py-3">{employeeMap.get(req.employeeId) || 'Unknown'}</td>}
+            <td className="px-4 py-3">{req.proposedLastDay || '-'}</td>
+            <td className="px-4 py-3 max-w-xs truncate" title={req.reason}>{req.reason || '-'}</td>
+            <td className="px-4 py-3">
+              <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusBadge(req.status)}`}>
+                {req.status || 'Pending'}
+              </span>
+            </td>
+            <td className="px-4 py-3 max-w-xs truncate" title={req.managerNotes}>{req.managerNotes || '-'}</td>
+          </>
+        );
+        break;
     }
 
     if (canManage) headers.push('Actions');
     
     return (
-      <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              {headers.map((h, index) => (
-                <th key={index} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {data.length > 0 ? (
-              data.map((req, index) => (
-                <tr key={req.id || index}>
-                  {renderRow(req)}
-                  {canManage && (
-                    <td className="px-4 py-3">
-                      {(req.status === RequestStatus.PENDING || !req.status) && (
-                        <div className="flex space-x-2">
-                          <Button 
-                            size="sm" 
-                            onClick={() => handleUpdateRequest(type, req.id, 'approve')}
-                          >
-                            Approve
-                          </Button>
-                          <Button 
-                            size="sm" 
-                            variant="secondary" 
-                            onClick={() => {
-                              const reason = prompt('Enter rejection reason:');
-                              if (reason) {
-                                handleUpdateRequest(type, req.id, 'reject', reason);
-                              }
-                            }}
-                          >
-                            Reject
-                          </Button>
-                        </div>
-                      )}
-                    </td>
-                  )}
-                </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan={headers.length} className="px-4 py-6 text-center text-gray-500">
-                  No {type} requests found
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+        <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                    <tr>
+                        {headers.map((h, index) => (
+                            <th key={index} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                                {h}
+                            </th>
+                        ))}
+                    </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                    {data.length > 0 ? (
+                        data.map((req, index) => (
+                            <tr key={req.id || index}>
+                                {renderRow(req)}
+                                {canManage && req.status === 'Pending' && (
+                                    <td className="px-4 py-3">
+                                        <div className="flex space-x-2">
+                                            <Button 
+                                                size="sm" 
+                                                onClick={() => {
+                                                    setPendingAction({
+                                                        type,
+                                                        id: req.id,
+                                                        action: 'approve'
+                                                    });
+                                                    setShowConfirmModal(true);
+                                                }}
+                                            >
+                                                Approve
+                                            </Button>
+                                            <Button 
+                                                size="sm" 
+                                                variant="secondary" 
+                                                onClick={() => {
+                                                    const reason = prompt('Enter rejection reason:');
+                                                    if (reason) {
+                                                        setPendingAction({
+                                                            type,
+                                                            id: req.id,
+                                                            action: 'reject',
+                                                            reason
+                                                        });
+                                                        setShowConfirmModal(true);
+                                                    }
+                                                }}
+                                            >
+                                                Reject
+                                            </Button>
+                                        </div>
+                                    </td>
+                                )}
+                                {canManage && req.status !== 'Pending' && (
+                                    <td className="px-4 py-3 text-gray-400">—</td>
+                                )}
+                            </tr>
+                        ))
+                    ) : (
+                        <tr>
+                            <td colSpan={headers.length} className="px-4 py-6 text-center text-gray-500">
+                                No {type} requests found
+                            </td>
+                        </tr>
+                    )}
+                </tbody>
+            </table>
+        </div>
     );
+  };
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'Approved':
+        return 'bg-green-100 text-green-800';
+      case 'Rejected':
+        return 'bg-red-100 text-red-800';
+      case 'Pending':
+      default:
+        return 'bg-yellow-100 text-yellow-800';
+    }
   };
 
   return (
     <div className="space-y-6 p-4">
+      {renderConfirmationModal()}
+      
       <Card>
         <div className="flex justify-between items-center">
           <h1 className="text-2xl font-bold text-gray-800">Employee Service Requests</h1>

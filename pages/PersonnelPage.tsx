@@ -462,8 +462,11 @@ const PersonnelDetailView: React.FC = () => {
     const isNewPath = location.pathname.endsWith('/new');
     const { employeeId } = useParams<{ employeeId: string }>();
     const navigate = useNavigate();
-    const { employees, addEmployee, updateEmployee } = useHRData();
+    const { employees, addEmployee, updateEmployee, refreshEmployees } = useHRData();
     const { hasPermission, currentUser, employeeDetails, isAdmin, isManager } = useAuth();
+    const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const [imageKey, setImageKey] = useState(Date.now());
 
     const isNew = isNewPath || employeeId === 'new';
     const canManage = hasPermission('canManagePersonnel');
@@ -493,6 +496,10 @@ const PersonnelDetailView: React.FC = () => {
     }, [employees, employeeId, isNew]);
 
     useEffect(() => {
+        console.log('🔄 useEffect triggered - employee changed');
+        console.log('📦 Employee object:', employee);
+        console.log('📸 Employee photoUrl:', employee?.photoUrl);
+        
         const initialData = employee || {
             workStatus: WorkStatus.PROBATION,
             allowances: [],
@@ -503,7 +510,20 @@ const PersonnelDetailView: React.FC = () => {
             leaveBalances: { Annual: { total: 24, taken: 0 }, Sick: { total: 10, taken: 0 } },
             customFieldValues: {},
         };
-        setFormData(initialData);
+        
+        // ⭐ FIX: Preserve the current photoUrl when resetting formData
+        // This prevents the photo from disappearing after refresh
+        setFormData(prev => {
+            const newFormData = {
+                ...initialData,
+                photoUrl: initialData.photoUrl || prev.photoUrl // Keep existing photoUrl if new data doesn't have one
+            };
+            console.log('📝 Setting formData with photoUrl:', newFormData.photoUrl);
+            console.log('   - initialData.photoUrl:', initialData.photoUrl);
+            console.log('   - prev.photoUrl:', prev.photoUrl);
+            return newFormData;
+        });
+        
         setIsEditing(isNew);
         if (isNew) setActiveTab('personal');
     }, [employee, isNew]);
@@ -521,6 +541,17 @@ const PersonnelDetailView: React.FC = () => {
     if (!isNew && !employee) {
         return <Card><p className="text-red-500 text-center p-4">Employee not found.</p></Card>;
     }
+
+    useEffect(() => {
+        if (formData.photoUrl) {
+            console.log('📸 Photo URL updated in formData:', formData.photoUrl);
+            // Test if the image loads
+            const img = new Image();
+            img.onload = () => console.log('✅ Test image loaded successfully');
+            img.onerror = () => console.error('❌ Test image failed to load');
+            img.src = formData.photoUrl;
+        }
+    }, [formData.photoUrl]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
@@ -578,6 +609,104 @@ const PersonnelDetailView: React.FC = () => {
 
     const handleCustomFieldChange = (fieldId: string, value: any) => {
         setFormData(prev => ({ ...prev, customFieldValues: { ...prev.customFieldValues, [fieldId]: value } }));
+    };
+
+    const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        // Validate file type
+        const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
+        if (!validTypes.includes(file.type.toLowerCase())) {
+            alert('Please upload a valid image file (JPEG, PNG, or GIF)');
+            return;
+        }
+
+        // Validate file size (2MB)
+        if (file.size > 2 * 1024 * 1024) {
+            alert('File size must be less than 2MB');
+            return;
+        }
+
+        // Check if employee ID exists
+        if (!employeeId || employeeId === 'new') {
+            alert('Please save the employee first before uploading a photo');
+            return;
+        }
+
+        setIsUploadingPhoto(true);
+        try {
+            console.log('📤 Uploading photo for employee:', employeeId);
+            
+            const data = await api.uploadEmployeePhoto(employeeId, file);
+            
+            console.log('✅ Upload successful - FULL RESPONSE:', JSON.stringify(data, null, 2));
+            console.log('📸 Received photoUrl from API:', data.photoUrl);
+            console.log('🔍 Response keys:', Object.keys(data));
+            
+            // Update form data with new photo URL
+            setFormData(prev => {
+                const updated = {
+                    ...prev,
+                    photoUrl: data.photoUrl
+                };
+                console.log('📝 Updated formData with photoUrl:', updated.photoUrl);
+                return updated;
+            });
+            setImageKey(Date.now());
+
+            // If we're in edit mode and the employee exists, update the employee record
+            if (employee && !isNew) {
+                const employeeIdToUpdate = employee.id || (employee as any)._id;
+                
+                console.log('💾 Updating employee record with photoUrl:', data.photoUrl);
+                
+                // Create update object with the new photo URL
+                const updateData = {
+                    ...formData,
+                    photoUrl: data.photoUrl
+                };
+                
+                // Remove any fields that shouldn't be sent in update
+                delete (updateData as any).id;
+                delete (updateData as any)._id;
+                delete (updateData as any).auditTrail;
+                
+                const updatedEmployee = await updateEmployee(employeeIdToUpdate, updateData as any);
+                console.log('✅ Employee record updated via API:', updatedEmployee);
+                console.log('📸 Updated employee photoUrl:', updatedEmployee?.photoUrl);
+            }
+
+            // Trigger refresh to update the employee list
+            console.log('🔄 Calling refreshEmployees...');
+            if (refreshEmployees) {
+                await refreshEmployees();
+                console.log('✅ Employees refreshed');
+            }
+
+            alert('Photo uploaded successfully!');
+        } catch (error: any) {
+            console.error('❌ Error uploading photo:', error);
+            
+            let errorMessage = 'Failed to upload photo. ';
+            if (error.message?.includes('401')) {
+                errorMessage += 'You are not authorized. Please log in again.';
+            } else if (error.message?.includes('413')) {
+                errorMessage += 'File size is too large. Please use a smaller image.';
+            } else if (error.message) {
+                errorMessage += error.message;
+            } else {
+                errorMessage += 'Please try again.';
+            }
+            
+            alert(errorMessage);
+        } finally {
+            setIsUploadingPhoto(false);
+            // Clear the file input
+            if (fileInputRef.current) {
+                fileInputRef.current.value = '';
+            }
+        }
     };
 
     const handleSave = async () => {
@@ -716,10 +845,70 @@ const PersonnelDetailView: React.FC = () => {
             {/* Profile header card */}
             <Card>
                 <div className="p-4 flex items-center gap-6">
-                    {/* Avatar with initials */}
-                    <div className={`w-20 h-20 rounded-2xl bg-gradient-to-br ${avatarGrad} flex items-center justify-center text-white text-2xl font-bold flex-shrink-0 shadow-lg`}>
-                        {isNew ? '?' : `${formData.firstName?.[0] || ''}${formData.lastName?.[0] || ''}`}
+                    {/* Avatar with photo upload option */}
+                    <div className="relative group">
+                        {formData.photoUrl ? (
+                            <div className="relative">
+                                <img 
+                                    key={formData.photoUrl} // Force re-render when URL changes
+                                    src={`${formData.photoUrl}?t=${imageKey}`} // Add timestamp to bypass cache
+                                    alt={`${formData.firstName} ${formData.lastName}`}
+                                    className="w-20 h-20 rounded-2xl object-cover flex-shrink-0 shadow-lg"
+                                    onError={(e) => {
+                                        console.error('❌ Failed to load image:', formData.photoUrl);
+                                        // Hide the broken image
+                                        (e.target as HTMLImageElement).style.display = 'none';
+                                        // Show fallback
+                                        const parent = (e.target as HTMLImageElement).parentElement;
+                                        if (parent) {
+                                            const fallback = document.createElement('div');
+                                            fallback.className = `w-20 h-20 rounded-2xl bg-gradient-to-br ${avatarGrad} flex items-center justify-center text-white text-2xl font-bold flex-shrink-0 shadow-lg`;
+                                            fallback.textContent = isNew ? '?' : `${formData.firstName?.[0] || ''}${formData.lastName?.[0] || ''}`;
+                                            parent.appendChild(fallback);
+                                        }
+                                    }}
+                                    onLoad={() => console.log('✅ Image loaded successfully:', formData.photoUrl)}
+                                />
+                            </div>
+                        ) : (
+                            <div className={`w-20 h-20 rounded-2xl bg-gradient-to-br ${avatarGrad} flex items-center justify-center text-white text-2xl font-bold flex-shrink-0 shadow-lg`}>
+                                {isNew ? '?' : `${formData.firstName?.[0] || ''}${formData.lastName?.[0] || ''}`}
+                            </div>
+                        )}
+                        
+                        {/* Upload button - show when editing or for own profile */}
+                        {(isEditing || (isOwnProfile && !isNew)) && (
+                            <>
+                                <input
+                                    ref={fileInputRef}
+                                    type="file"
+                                    accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+                                    onChange={handlePhotoUpload}
+                                    className="hidden"
+                                    disabled={isUploadingPhoto}
+                                />
+                                <button
+                                    onClick={() => fileInputRef.current?.click()}
+                                    disabled={isUploadingPhoto}
+                                    className="absolute -bottom-2 -right-2 bg-blue-600 text-white p-2 rounded-full shadow-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                    title="Upload photo"
+                                >
+                                    {isUploadingPhoto ? (
+                                        <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                        </svg>
+                                    ) : (
+                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                                        </svg>
+                                    )}
+                                </button>
+                            </>
+                        )}
                     </div>
+                    
                     <div>
                         <h1 className="text-3xl font-bold text-[var(--color-text-primary)]">{empName || 'New Employee'}</h1>
                         <p className="text-lg text-[var(--color-text-secondary)]">{formData.designation || 'Not specified'}</p>
@@ -730,6 +919,7 @@ const PersonnelDetailView: React.FC = () => {
                             </span>
                         )}
                     </div>
+                    
                     {!isNew && (
                         <div className="ml-auto grid grid-cols-3 gap-6 text-center hidden md:grid">
                             <div>
@@ -779,6 +969,7 @@ const PersonnelList: React.FC = () => {
     const { employees, deleteEmployee, refreshEmployees } = useHRData();
     const { hasPermission } = useAuth();
     const navigate = useNavigate();
+    const dataLoadedRef = useRef(false);
 
     const [filters, setFilters]               = useState({ global: '', department: '', status: '', nationality: '', visaExp: '' });
     const [visibleColumns, setVisibleColumns] = useState(new Set(DEFAULT_VISIBLE_COLUMNS));
@@ -808,6 +999,29 @@ const PersonnelList: React.FC = () => {
         };
         return statusCounts;
     }, [employees]);
+
+    useEffect(() => {
+        let isMounted = true;
+        
+        const loadData = async () => {
+            // Prevent double loading
+            if (dataLoadedRef.current) {
+                console.log('📊 Personnel data already loaded, skipping...');
+                return;
+            }
+            
+            if (refreshEmployees) {
+                dataLoadedRef.current = true;
+                await refreshEmployees();
+            }
+        };
+        
+        loadData();
+        
+        return () => {
+            isMounted = false;
+        };
+    }, [refreshEmployees]); 
 
     useEffect(() => {
         if (refreshEmployees) refreshEmployees();
@@ -961,24 +1175,24 @@ const PersonnelList: React.FC = () => {
 
             {/* ── Stats strip ── */}
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
-    {[
-        { label: 'Total', value: stats.total, color: 'bg-indigo-50 border-indigo-100', textColor: 'text-indigo-700', dot: 'bg-indigo-500' },
-        { label: 'Active', value: stats.active, color: 'bg-emerald-50 border-emerald-100', textColor: 'text-emerald-700', dot: 'bg-emerald-500' },
-        { label: 'Probation', value: stats.probation, color: 'bg-blue-50 border-blue-100', textColor: 'text-blue-700', dot: 'bg-blue-500' },
-        { label: 'On Leave', value: stats.onLeave, color: 'bg-yellow-50 border-yellow-100', textColor: 'text-yellow-700', dot: 'bg-yellow-500' },
-        { label: 'Suspended', value: stats.suspended, color: 'bg-orange-50 border-orange-100', textColor: 'text-orange-700', dot: 'bg-orange-500' },
-        { label: 'Resigned', value: stats.resigned, color: 'bg-gray-50 border-gray-200', textColor: 'text-gray-700', dot: 'bg-gray-500' },
-        { label: 'Terminated', value: stats.terminated, color: 'bg-red-50 border-red-100', textColor: 'text-red-700', dot: 'bg-red-500' },
-    ].map(s => (
-        <div key={s.label} className={`rounded-xl border ${s.color} px-4 py-4 flex items-center gap-3`}>
-            <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${s.dot}`} />
-            <div>
-                <p className={`text-2xl font-extrabold ${s.textColor} leading-none`}>{s.value}</p>
-                <p className="text-xs text-[var(--color-text-secondary)] mt-0.5">{s.label}</p>
+                {[
+                    { label: 'Total', value: stats.total, color: 'bg-indigo-50 border-indigo-100', textColor: 'text-indigo-700', dot: 'bg-indigo-500' },
+                    { label: 'Active', value: stats.active, color: 'bg-emerald-50 border-emerald-100', textColor: 'text-emerald-700', dot: 'bg-emerald-500' },
+                    { label: 'Probation', value: stats.probation, color: 'bg-blue-50 border-blue-100', textColor: 'text-blue-700', dot: 'bg-blue-500' },
+                    { label: 'On Leave', value: stats.onLeave, color: 'bg-yellow-50 border-yellow-100', textColor: 'text-yellow-700', dot: 'bg-yellow-500' },
+                    { label: 'Suspended', value: stats.suspended, color: 'bg-orange-50 border-orange-100', textColor: 'text-orange-700', dot: 'bg-orange-500' },
+                    { label: 'Resigned', value: stats.resigned, color: 'bg-gray-50 border-gray-200', textColor: 'text-gray-700', dot: 'bg-gray-500' },
+                    { label: 'Terminated', value: stats.terminated, color: 'bg-red-50 border-red-100', textColor: 'text-red-700', dot: 'bg-red-500' },
+                ].map(s => (
+                    <div key={s.label} className={`rounded-xl border ${s.color} px-4 py-4 flex items-center gap-3`}>
+                        <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${s.dot}`} />
+                        <div>
+                            <p className={`text-2xl font-extrabold ${s.textColor} leading-none`}>{s.value}</p>
+                            <p className="text-xs text-[var(--color-text-secondary)] mt-0.5">{s.label}</p>
+                        </div>
+                    </div>
+                ))}
             </div>
-        </div>
-    ))}
-</div>
 
             {/* ── Filters ── */}
             <Card>
@@ -1073,9 +1287,33 @@ const PersonnelList: React.FC = () => {
                                                 {/* Employee name column: show avatar + name */}
                                                 {col.key === 'name' ? (
                                                     <div className="flex items-center gap-3">
-                                                        <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${getAvatarColor(emp.name)} flex items-center justify-center text-white text-xs font-bold flex-shrink-0`}>
-                                                            {`${emp.firstName?.[0] || ''}${emp.lastName?.[0] || ''}`}
-                                                        </div>
+                                                        {emp.photoUrl ? (
+                                                            <div className="relative">
+                                                                <img 
+                                                                    key={emp.photoUrl} // Force re-render when URL changes
+                                                                    src={`${emp.photoUrl}?t=${Date.now()}`} // Add timestamp to bypass cache
+                                                                    alt={emp.name}
+                                                                    className="w-8 h-8 rounded-full object-cover flex-shrink-0"
+                                                                    onError={(e) => {
+                                                                        console.log('❌ Failed to load image in list:', emp.photoUrl);
+                                                                        // Hide the broken image
+                                                                        (e.target as HTMLImageElement).style.display = 'none';
+                                                                        // Show fallback
+                                                                        const parent = (e.target as HTMLImageElement).parentElement;
+                                                                        if (parent) {
+                                                                            const fallback = document.createElement('div');
+                                                                            fallback.className = `w-8 h-8 rounded-full bg-gradient-to-br ${getAvatarColor(emp.name)} flex items-center justify-center text-white text-xs font-bold flex-shrink-0`;
+                                                                            fallback.textContent = `${emp.firstName?.[0] || ''}${emp.lastName?.[0] || ''}`;
+                                                                            parent.appendChild(fallback);
+                                                                        }
+                                                                    }}
+                                                                />
+                                                            </div>
+                                                        ) : (
+                                                            <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${getAvatarColor(emp.name)} flex items-center justify-center text-white text-xs font-bold flex-shrink-0`}>
+                                                                {`${emp.firstName?.[0] || ''}${emp.lastName?.[0] || ''}`}
+                                                            </div>
+                                                        )}
                                                         <div>
                                                             <p className="font-semibold text-[var(--color-text-primary)] text-sm">{emp.name}</p>
                                                             <p className="text-xs text-[var(--color-text-secondary)]">{emp.email}</p>

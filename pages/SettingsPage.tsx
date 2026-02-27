@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, FC, useCallback } from 'react';
 import { Card, Input, Button, ToggleSwitch, Modal, Select, ConfirmationModal, Textarea } from '../components/UI';
 import { CheckIcon, PlusIcon, PencilIcon, TrashIcon, SunIcon, ClockIcon } from '../components/Icons';
-import { UserAccount, useHRData } from '../hooks/useHRData';
+import { useHRData } from '../hooks/useHRData';
 import { 
     SystemSettings, User, Role, Employee, Permission, CustomFieldDef, 
     PayComponent, PayComponentType, PayCycle, RoundingRule, GLCodeMapping,
@@ -597,7 +597,7 @@ const UserManagementSection: React.FC = () => {
     );
 };
 
-// ============ FIXED UserFormModal ============
+// ============ FIXED UserFormModal with Password Field for Edit ============
 const UserFormModal: React.FC<{
     isOpen: boolean; 
     onClose: () => void; 
@@ -615,6 +615,9 @@ const UserFormModal: React.FC<{
         email: '',
         isActive: true
     });
+    
+    // 🔴 NEW: State to track if password should be changed
+    const [changePassword, setChangePassword] = useState(false);
 
     // Get already assigned employee IDs
     const assignedEmployeeIds = useMemo(() => {
@@ -647,12 +650,14 @@ const UserFormModal: React.FC<{
             if (user) {
                 setFormData({
                     username: user.username || '',
-                    password: '',
+                    password: '', // Always empty for security
                     employeeId: user.employeeId || '',
                     roleId: user.roleId || '',
                     email: user.email || '',
                     isActive: user.isActive !== undefined ? user.isActive : true
                 });
+                // Reset password change state when opening modal
+                setChangePassword(false);
             } else {
                 setFormData({
                     username: '',
@@ -662,6 +667,7 @@ const UserFormModal: React.FC<{
                     email: '',
                     isActive: true
                 });
+                setChangePassword(false);
             }
         }
     }, [user, isOpen, availableEmployees, roles]);
@@ -676,7 +682,14 @@ const UserFormModal: React.FC<{
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        onSave(formData);
+        
+        // If editing and changePassword is false, remove password from formData
+        const submitData = { ...formData };
+        if (user && !changePassword) {
+            delete submitData.password;
+        }
+        
+        onSave(submitData);
     };
 
     return (
@@ -705,12 +718,13 @@ const UserFormModal: React.FC<{
                     value={formData.username}
                     onChange={handleChange}
                     required
-                    disabled={!!user}
+                    disabled={!!user} // Disable username editing for existing users
                     autoComplete="off"
                 />
                 
-                {/* 3. Password - Third in order (only for new users) */}
-                {!user && (
+                {/* 3. Password - Third in order (with change option for edit) */}
+                {!user ? (
+                    // New user - password required
                     <Input
                         label="Password"
                         name="password"
@@ -721,6 +735,35 @@ const UserFormModal: React.FC<{
                         placeholder="Enter password"
                         autoComplete="new-password"
                     />
+                ) : (
+                    // Edit user - optional password change
+                    <div className="space-y-2">
+                        <div className="flex items-center">
+                            <input
+                                type="checkbox"
+                                id="changePassword"
+                                checked={changePassword}
+                                onChange={(e) => setChangePassword(e.target.checked)}
+                                className="h-4 w-4 text-blue-600 rounded border-gray-300"
+                            />
+                            <label htmlFor="changePassword" className="ml-2 text-sm text-gray-700">
+                                Change Password
+                            </label>
+                        </div>
+                        
+                        {changePassword && (
+                            <Input
+                                label="New Password"
+                                name="password"
+                                type="password"
+                                value={formData.password}
+                                onChange={handleChange}
+                                required
+                                placeholder="Enter new password"
+                                autoComplete="new-password"
+                            />
+                        )}
+                    </div>
                 )}
                 
                 {/* 4. Email - Fourth in order */}
@@ -1135,7 +1178,7 @@ const CustomFieldsSection: React.FC = () => (
     </Card>
 );
 
-// ============ FIXED PayrollSettingsSection with api import ============
+// ============ FIXED PayrollSettingsSection with Working Delete ============
 const PayrollSettingsSection: React.FC = () => {
   const [periods, setPeriods] = useState<any[]>([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -1144,6 +1187,11 @@ const PayrollSettingsSection: React.FC = () => {
     month: new Date().getMonth() + 1,
     year: new Date().getFullYear()
   });
+  
+  // 🔴 ADD THESE STATES for delete confirmation
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [periodToDelete, setPeriodToDelete] = useState<any>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const months = [
     { value: 1, name: 'January' }, { value: 2, name: 'February' },
@@ -1199,23 +1247,35 @@ const PayrollSettingsSection: React.FC = () => {
     }
   };
 
-  const handleDeletePeriod = async (id: string, status: string) => {
-    if (status === 'generated') {
-      alert('Cannot delete a period that has generated payroll data');
-      return;
-    }
+  // 🔴 FIXED: Delete function with confirmation
+  const handleDeleteClick = (period: any) => {
+    setPeriodToDelete(period);
+    setShowDeleteModal(true);
+  };
 
-    if (!window.confirm('Are you sure you want to delete this period? This will remove all associated payroll data.')) {
-      return;
-    }
-
+  // 🔴 NEW: Confirm delete function
+  const handleConfirmDelete = async () => {
+    if (!periodToDelete) return;
+    
+    setIsDeleting(true);
     try {
-      await api.deleteSettingsPeriod(id);
+      await api.deleteSettingsPeriod(periodToDelete.id || periodToDelete._id);
       await loadPeriods();
-    } catch (error) {
+      setShowDeleteModal(false);
+      setPeriodToDelete(null);
+      alert(`✅ Payroll period deleted successfully!`);
+    } catch (error: any) {
       console.error('Failed to delete period:', error);
-      alert('Failed to delete period');
+      alert(error?.message || 'Failed to delete payroll period');
+    } finally {
+      setIsDeleting(false);
     }
+  };
+
+  // 🔴 NEW: Cancel delete
+  const handleCancelDelete = () => {
+    setShowDeleteModal(false);
+    setPeriodToDelete(null);
   };
 
   return (
@@ -1269,9 +1329,8 @@ const PayrollSettingsSection: React.FC = () => {
                   <Button 
                     variant="danger" 
                     size="sm"
-                    onClick={() => handleDeletePeriod(period.id || period._id, period.status)}
-                    disabled={period.status === 'generated'}
-                    title={period.status === 'generated' ? "Cannot delete generated payroll" : ""}
+                    onClick={() => handleDeleteClick(period)}
+                    title="Delete period"
                   >
                     <TrashIcon className="h-4 w-4" />
                   </Button>
@@ -1329,6 +1388,56 @@ const PayrollSettingsSection: React.FC = () => {
             </Button>
             <Button onClick={handleCreatePeriod}>
               Create Period
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* 🔴 NEW: Delete Confirmation Modal */}
+      <Modal
+        isOpen={showDeleteModal}
+        onClose={handleCancelDelete}
+        title="Delete Payroll Period"
+      >
+        <div className="space-y-4">
+          <div className="flex items-center justify-center text-5xl mb-4 text-red-500">
+            ⚠️
+          </div>
+          <p className="text-center text-gray-700">
+            Are you sure you want to delete <strong>{periodToDelete?.monthName} {periodToDelete?.year}</strong>?
+          </p>
+          <p className="text-center text-sm text-red-600">
+            This action cannot be undone. All payroll data for this period will be permanently deleted.
+          </p>
+          
+          <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-200">
+            <p className="text-sm text-yellow-700">
+              <strong>Period details:</strong><br />
+              Status: {periodToDelete?.status || 'draft'}<br />
+              Dates: {periodToDelete?.startDate && new Date(periodToDelete.startDate).toLocaleDateString()} - {periodToDelete?.endDate && new Date(periodToDelete.endDate).toLocaleDateString()}
+            </p>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-4">
+            <Button variant="secondary" onClick={handleCancelDelete} disabled={isDeleting}>
+              Cancel
+            </Button>
+            <Button 
+              variant="danger" 
+              onClick={handleConfirmDelete}
+              disabled={isDeleting}
+            >
+              {isDeleting ? (
+                <>
+                  <svg className="animate-spin h-4 w-4 mr-2" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  Deleting...
+                </>
+              ) : (
+                'Delete Period'
+              )}
             </Button>
           </div>
         </div>

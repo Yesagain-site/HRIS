@@ -1,12 +1,17 @@
 // DashboardPage.tsx
-import React from 'react';
+import React, { useState } from 'react';
 import { useHRData } from '../hooks/useHRData';
 import { useAuth } from '../contexts/AuthContext';
 import { WorkStatus } from '../hooks/useHRData'; // Import the enum if needed
+import { Modal } from '../components/UI';
 
 const DashboardPage: React.FC = () => {
   const { employees, attendanceRecords, roles, users } = useHRData();
   const { currentUser } = useAuth();
+  
+  // State for department modal
+  const [selectedDepartment, setSelectedDepartment] = useState<string | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   
   console.log('Dashboard Data:', {
     employeesCount: employees.length,
@@ -21,19 +26,125 @@ const DashboardPage: React.FC = () => {
   
   // Group by department
   const departmentCounts: Record<string, number> = {};
+  const employeesByDepartment: Record<string, any[]> = {};
+  
   employees.forEach(emp => {
     const dept = emp.department || 'Unassigned';
     departmentCounts[dept] = (departmentCounts[dept] || 0) + 1;
+    
+    // Store employees by department for modal display
+    if (!employeesByDepartment[dept]) {
+      employeesByDepartment[dept] = [];
+    }
+    employeesByDepartment[dept].push(emp);
   });
   
   // Calculate attendance for today
   const today = new Date().toISOString().split('T')[0];
   const todaysAttendance = attendanceRecords.filter(record => record.date === today);
-  const presentCount = todaysAttendance.filter(record => record.status === 'Present').length;
+  const presentCount = todaysAttendance.filter(record => 
+    record.status === 'Present' || record.status === 'Late' || record.status === 'Early Departure'
+  ).length;
   const notPresentCount = todaysAttendance.length - presentCount;
+  
+  // Handle department click
+  const handleDepartmentClick = (department: string) => {
+    setSelectedDepartment(department);
+    setIsModalOpen(true);
+  };
+  
+  // Close modal
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setSelectedDepartment(null);
+  };
+  
+  // Get employees for selected department
+  const departmentEmployees = selectedDepartment ? employeesByDepartment[selectedDepartment] || [] : [];
+  
+  // Sort employees by name
+  const sortedEmployees = [...departmentEmployees].sort((a, b) => 
+    `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`)
+  );
   
   return (
     <div className="space-y-6">
+      {/* Department Employee Modal */}
+      <Modal 
+        isOpen={isModalOpen} 
+        onClose={handleCloseModal}
+        title={selectedDepartment ? `${selectedDepartment} Department (${departmentEmployees.length} employees)` : 'Department Employees'}
+      >
+        <div className="max-h-96 overflow-y-auto">
+          {sortedEmployees.length > 0 ? (
+            <div className="space-y-2">
+              {sortedEmployees.map((emp) => (
+                <div 
+                  key={emp.id} 
+                  className="p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600 font-semibold">
+                        {emp.firstName?.[0]}{emp.lastName?.[0]}
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-900">
+                          {emp.firstName} {emp.middleName || ''} {emp.lastName}
+                        </p>
+                        <div className="flex items-center space-x-2 text-sm text-gray-500">
+                          <span>{emp.designation || 'No designation'}</span>
+                          <span>•</span>
+                          <span>ID: {emp.staffId || 'N/A'}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                        emp.workStatus === 'Active' 
+                          ? 'bg-green-100 text-green-800' 
+                          : 'bg-gray-100 text-gray-800'
+                      }`}>
+                        {emp.workStatus || 'Active'}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  {/* Additional details */}
+                  <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-gray-500 border-t pt-2">
+                    <div>
+                      <span className="font-medium">Email:</span> {emp.email || '—'}
+                    </div>
+                    <div>
+                      <span className="font-medium">Phone:</span> {emp.phone || emp.mobile || '—'}
+                    </div>
+                    <div>
+                      <span className="font-medium">Join Date:</span> {emp.joinDate ? new Date(emp.joinDate).toLocaleDateString() : '—'}
+                    </div>
+                    <div>
+                      <span className="font-medium">Manager:</span> {emp.manager || '—'}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              No employees found in this department
+            </div>
+          )}
+        </div>
+        
+        <div className="mt-4 flex justify-end">
+          <button
+            onClick={handleCloseModal}
+            className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
+          >
+            Close
+          </button>
+        </div>
+      </Modal>
+    
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold text-gray-800">Dashboard</h1>
         <div className="text-sm text-gray-600">
@@ -83,15 +194,19 @@ const DashboardPage: React.FC = () => {
             </div>
           </div>
           <div className="mt-4 space-y-2">
-            {Object.entries(departmentCounts).slice(0, 3).map(([dept, count]) => (
-              <div key={dept} className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">{dept}</span>
-                <span className="font-medium">{count}</span>
+            {Object.entries(departmentCounts).slice(0, 5).map(([dept, count]) => (
+              <div 
+                key={dept} 
+                className="flex justify-between items-center p-2 hover:bg-gray-50 rounded-md cursor-pointer transition-colors"
+                onClick={() => handleDepartmentClick(dept)}
+              >
+                <span className="text-sm text-gray-600 hover:text-indigo-600">{dept}</span>
+                <span className="font-medium bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full text-xs">{count}</span>
               </div>
             ))}
-            {Object.keys(departmentCounts).length > 3 && (
+            {Object.keys(departmentCounts).length > 5 && (
               <div className="text-sm text-gray-500 text-center pt-2">
-                +{Object.keys(departmentCounts).length - 3} more departments
+                +{Object.keys(departmentCounts).length - 5} more departments
               </div>
             )}
           </div>
@@ -160,22 +275,32 @@ const DashboardPage: React.FC = () => {
       
       {/* Charts/Graphs Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Department Distribution */}
+        {/* Department Distribution - Clickable Bars */}
         <div className="bg-white rounded-lg shadow p-6">
           <h2 className="text-lg font-semibold text-gray-800 mb-4">Headcount by Department</h2>
           <div className="space-y-3">
             {Object.entries(departmentCounts).map(([dept, count]) => (
-              <div key={dept} className="flex items-center">
-                <div className="w-32 text-sm text-gray-600">{dept}</div>
+              <div 
+                key={dept} 
+                className="flex items-center cursor-pointer group"
+                onClick={() => handleDepartmentClick(dept)}
+              >
+                <div className="w-32 text-sm text-gray-600 group-hover:text-indigo-600 transition-colors">{dept}</div>
                 <div className="flex-1 ml-4">
-                  <div className="h-6 bg-gray-200 rounded-full overflow-hidden">
+                  <div className="h-8 bg-gray-200 rounded-full overflow-hidden relative group-hover:bg-gray-300 transition-colors">
                     <div 
-                      className="h-full bg-blue-500 rounded-full"
+                      className="h-full bg-blue-500 rounded-full group-hover:bg-blue-600 transition-colors flex items-center justify-end px-3"
                       style={{ width: `${(count / totalHeadcount) * 100}%` }}
-                    />
+                    >
+                      {((count / totalHeadcount) * 100) > 15 && (
+                        <span className="text-xs text-white font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+                          Click to view
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
-                <div className="w-12 text-right font-medium">{count}</div>
+                <div className="w-12 text-right font-medium group-hover:text-indigo-600">{count}</div>
               </div>
             ))}
             {Object.keys(departmentCounts).length === 0 && (
@@ -183,6 +308,9 @@ const DashboardPage: React.FC = () => {
                 No department data available
               </div>
             )}
+          </div>
+          <div className="mt-3 text-xs text-gray-500 text-center">
+            Click on any department bar or name to view employees
           </div>
         </div>
         

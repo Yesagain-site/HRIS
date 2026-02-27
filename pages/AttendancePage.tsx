@@ -190,29 +190,163 @@ const ShiftManagementModal: React.FC<{
 // ─── Manager Dashboard Tab ────────────────────────────────────────────────────
 
 const ManagerDashboardTab: React.FC = () => {
-    const { attendanceRecords, leaveRequests, employees } = useHRData();
+    const { attendanceRecords, serviceRequests, employees, refreshEmployees, updateRequestStatus } = useHRData();
     const todayStr = new Date().toISOString().split('T')[0];
+    const [showConfirmModal, setShowConfirmModal] = useState(false);
+    const [pendingAction, setPendingAction] = useState<{
+        type: 'leave' | 'permission' | 'cash' | 'resignation';
+        id: string;
+        action: 'approve' | 'reject';
+        reason?: string;
+    } | null>(null);
+
+    useEffect(() => {
+        if (attendanceRecords.length === 0) {
+            console.log('🔄 No attendance records, reloading...');
+            refreshEmployees();
+        }
+    }, [attendanceRecords.length]);
 
     const todaySummary = useMemo(() => {
-        const todayRecords    = attendanceRecords.filter((r) => r.date === todayStr);
+        const todayRecords = attendanceRecords.filter((r) => r.date === todayStr);
         const activeEmployees = employees.filter((e) => e.workStatus === 'Active');
+        
         return {
-            total   : activeEmployees.length,
-            present : todayRecords.filter((r) => r.status === 'Present' || r.status === 'Late').length,
-            absent  : todayRecords.filter((r) => r.status === 'Absent').length,
-            onLeave : todayRecords.filter((r) => r.status === 'On Leave').length,
-            late    : todayRecords.filter((r) => r.status === 'Late').length,
+            total: activeEmployees.length,
+            present: todayRecords.filter((r) => 
+                r.status === 'Present' || r.status === 'Late'
+            ).length,
+            absent: todayRecords.filter((r) => r.status === 'Absent').length,
+            onLeave: todayRecords.filter((r) => r.status === 'On Leave').length,
+            late: todayRecords.filter((r) => r.status === 'Late').length,
             earlyOut: todayRecords.filter((r) => r.status === 'Early Departure').length,
         };
     }, [attendanceRecords, todayStr, employees]);
 
-    const pendingLeaveRequests = useMemo(
-        () => leaveRequests.filter((r) => r.status === RequestStatus.PENDING),
-        [leaveRequests]
-    );
+    // Get ALL pending requests from serviceRequests
+    const pendingRequests = useMemo(() => {
+        if (!serviceRequests) return [];
+        
+        return serviceRequests
+            .filter((r: any) => r.status === 'Pending')
+            .sort((a: any, b: any) => {
+                const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+                const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+                return dateB - dateA;
+            });
+    }, [serviceRequests]);
+
+    const getEmployeeName = (employeeId: string) => {
+        const emp = employees.find(e => e.id === employeeId);
+        return emp ? `${emp.firstName} ${emp.lastName}` : 'Unknown';
+    };
+
+    const getRequestTypeDisplay = (req: any) => {
+        switch (req.requestType) {
+            case 'leave':
+                return `Leave (${req.leaveType || 'Annual'})`;
+            case 'permission':
+                return `Permission (${req.startTime || ''} - ${req.endTime || ''})`;
+            case 'cash':
+                return `Cash Advance (AED ${req.amount || 0})`;
+            case 'resignation':
+                return `Resignation`;
+            default:
+                return req.requestType;
+        }
+    };
+
+    const getRequestDetails = (req: any) => {
+        switch (req.requestType) {
+            case 'leave':
+                return `${req.startDate || ''} to ${req.endDate || ''}`;
+            case 'permission':
+                return `${req.permissionDate || ''}`;
+            case 'cash':
+                return `Repayment: ${req.repaymentDate || 'Not specified'}`;
+            case 'resignation':
+                return `Last Day: ${req.proposedLastDay || 'Not specified'}`;
+            default:
+                return '';
+        }
+    };
+
+    const handleUpdateRequest = async (
+        type: 'leave' | 'permission' | 'cash' | 'resignation',
+        id: string,
+        action: 'approve' | 'reject',
+        reason?: string
+    ) => {
+        try {
+            const status = action === 'approve' ? 'Approved' : 'Rejected';
+            await updateRequestStatus(type, id, status, reason);
+            alert(`Request ${action}d successfully!`);
+        } catch (error) {
+            console.error('Error updating request:', error);
+            alert('Failed to update request. Please try again.');
+        }
+    };
+
+    const renderConfirmationModal = () => {
+        if (!pendingAction) return null;
+        
+        return (
+            <Modal
+                isOpen={showConfirmModal}
+                onClose={() => {
+                    setShowConfirmModal(false);
+                    setPendingAction(null);
+                }}
+                title={pendingAction.action === 'approve' ? 'Approve Request' : 'Reject Request'}
+            >
+                <div className="space-y-4">
+                    <div className="flex items-center justify-center text-5xl mb-4">
+                        {pendingAction.action === 'approve' ? '✅' : '⚠️'}
+                    </div>
+                    <p className="text-center text-gray-700">
+                        {pendingAction.action === 'approve' 
+                            ? 'Are you sure you want to approve this request?' 
+                            : 'Are you sure you want to reject this request?'}
+                    </p>
+                    {pendingAction.reason && (
+                        <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-200">
+                            <p className="text-sm text-yellow-700">
+                                <strong>Rejection reason:</strong> {pendingAction.reason}
+                            </p>
+                        </div>
+                    )}
+                    <div className="flex justify-end gap-3 pt-4">
+                        <Button variant="secondary" onClick={() => {
+                            setShowConfirmModal(false);
+                            setPendingAction(null);
+                        }}>
+                            Cancel
+                        </Button>
+                        <Button 
+                            variant={pendingAction.action === 'approve' ? 'primary' : 'danger'}
+                            onClick={async () => {
+                                await handleUpdateRequest(
+                                    pendingAction.type,
+                                    pendingAction.id,
+                                    pendingAction.action,
+                                    pendingAction.reason
+                                );
+                                setShowConfirmModal(false);
+                                setPendingAction(null);
+                            }}
+                        >
+                            {pendingAction.action === 'approve' ? 'Approve' : 'Reject'}
+                        </Button>
+                    </div>
+                </div>
+            </Modal>
+        );
+    };
 
     return (
         <div className="space-y-6">
+            {renderConfirmationModal()}
+            
             <Card title="Today's Attendance Snapshot">
                 <div className="grid grid-cols-2 md:grid-cols-6 gap-4 text-center">
                     <div className="p-4 bg-gray-50 rounded-lg">
@@ -240,36 +374,83 @@ const ManagerDashboardTab: React.FC = () => {
                         <p className="text-sm text-orange-600">Early Out</p>
                     </div>
                 </div>
+                
+                <div className="mt-2 text-xs text-gray-500 text-center">
+                    * Present count includes employees who arrived late
+                </div>
             </Card>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <Card title="Pending Leave Requests">
-                    {pendingLeaveRequests.length > 0 ? (
+            <div className="grid grid-cols-1 gap-6">
+                <Card title="Pending Service Requests">
+                    {pendingRequests.length > 0 ? (
                         <div className="space-y-3">
-                            {pendingLeaveRequests.slice(0, 5).map((r) => {
-                                const emp = employees.find((e) => e.id === r.employeeId);
-                                return (
-                                    <div key={r.id} className="flex items-center justify-between p-3 bg-gray-50 rounded">
-                                        <div>
-                                            <p className="font-medium">{emp?.firstName} {emp?.lastName}</p>
-                                            <p className="text-sm text-gray-600">{r.leaveType} • {r.startDate} to {r.endDate}</p>
+                            {pendingRequests.slice(0, 10).map((req: any) => (
+                                <div key={req.id} className="flex items-center justify-between p-3 bg-gray-50 rounded">
+                                    <div className="flex-1">
+                                        <div className="flex items-center gap-2">
+                                            <p className="font-medium">{getEmployeeName(req.employeeId)}</p>
+                                            <span className={`px-2 py-0.5 text-xs rounded-full ${
+                                                req.requestType === 'leave' ? 'bg-blue-100 text-blue-800' :
+                                                req.requestType === 'permission' ? 'bg-purple-100 text-purple-800' :
+                                                req.requestType === 'cash' ? 'bg-green-100 text-green-800' :
+                                                'bg-orange-100 text-orange-800'
+                                            }`}>
+                                                {req.requestType}
+                                            </span>
                                         </div>
-                                        <div className="flex gap-2">
-                                            <Button size="sm" variant="secondary">Approve</Button>
-                                            <Button size="sm" variant="danger">Reject</Button>
-                                        </div>
+                                        <p className="text-sm text-gray-600">
+                                            <span className="font-semibold">{getRequestTypeDisplay(req)}</span>
+                                            {getRequestDetails(req) && ` • ${getRequestDetails(req)}`}
+                                        </p>
+                                        {req.reason && (
+                                            <p className="text-xs text-gray-500 mt-1">"{req.reason}"</p>
+                                        )}
                                     </div>
-                                );
-                            })}
-                            {pendingLeaveRequests.length > 5 && (
+                                    <div className="flex gap-2 ml-4">
+                                        <Button 
+                                            size="sm" 
+                                            variant="secondary"
+                                            onClick={() => {
+                                                setPendingAction({
+                                                    type: req.requestType,
+                                                    id: req.id,
+                                                    action: 'approve'
+                                                });
+                                                setShowConfirmModal(true);
+                                            }}
+                                        >
+                                            Approve
+                                        </Button>
+                                        <Button 
+                                            size="sm" 
+                                            variant="danger"
+                                            onClick={() => {
+                                                const reason = prompt('Enter rejection reason:');
+                                                if (reason) {
+                                                    setPendingAction({
+                                                        type: req.requestType,
+                                                        id: req.id,
+                                                        action: 'reject',
+                                                        reason
+                                                    });
+                                                    setShowConfirmModal(true);
+                                                }
+                                            }}
+                                        >
+                                            Reject
+                                        </Button>
+                                    </div>
+                                </div>
+                            ))}
+                            {pendingRequests.length > 10 && (
                                 <p className="text-center text-sm text-gray-500">
-                                    +{pendingLeaveRequests.length - 5} more requests
+                                    +{pendingRequests.length - 10} more requests
                                 </p>
                             )}
                         </div>
                     ) : (
                         <div className="text-center py-6">
-                            <p className="text-gray-500">No pending leave requests</p>
+                            <p className="text-gray-500">No pending service requests</p>
                             <p className="text-sm text-gray-400 mt-1">All requests have been processed</p>
                         </div>
                     )}
@@ -862,8 +1043,19 @@ const MyAttendanceTab: React.FC = () => {
                                             <tr key={`att-${rec.id}`} className="hover:bg-gray-50">
                                                 <td className="px-4 py-3 font-medium">{formatDisplayDate(rec.date)}</td>
                                                 <td className="px-4 py-3">
-                                                    <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusBadgeClass(rec.status)}`}>
-                                                        {rec.status}
+                                                    {/* FIXED: Show "Present" for Present, Late, AND Early Departure */}
+                                                    <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                                                        rec.status === 'Present' || rec.status === 'Late' || rec.status === 'Early Departure'
+                                                            ? 'bg-green-100 text-green-800'
+                                                            : rec.status === 'Absent'
+                                                            ? 'bg-red-100 text-red-800'
+                                                            : rec.status === 'On Leave'
+                                                            ? 'bg-blue-100 text-blue-800'
+                                                            : getStatusBadgeClass(rec.status)
+                                                    }`}>
+                                                        {rec.status === 'Present' || rec.status === 'Late' || rec.status === 'Early Departure'
+                                                            ? 'Present'
+                                                            : rec.status}
                                                     </span>
                                                 </td>
                                                 <td className="px-4 py-3 font-mono">{formatDisplayTime(rec.inTime)}</td>
@@ -878,13 +1070,17 @@ const MyAttendanceTab: React.FC = () => {
                                                 </td>
                                                 <td className="px-4 py-3">
                                                     <div className="flex flex-col gap-1">
-                                                        {(rec as any).isLate && (
-                                                            <span>Late +{formatMinutes((rec as any).lateMinutes)}</span>
-                                                        )}
-                                                        {(rec as any).isEarlyDeparture && (
-                                                            <span>Early -{formatMinutes((rec as any).earlyDepartureMinutes)}</span>
-                                                        )}
-                                                        {!(rec as any).isLate && !(rec as any).isEarlyDeparture && '—'}
+                                                        {/* Show late minutes if they were late */}
+                                                        {(rec.status === 'Late' || rec.isLate) && rec.lateMinutes ? (
+                                                            <span className="text-yellow-600">Late +{formatMinutes(rec.lateMinutes)}</span>
+                                                        ) : null}
+                                                        
+                                                        {/* Show early departure if applicable */}
+                                                        {(rec.status === 'Early Departure' || rec.isEarlyDeparture) && rec.earlyDepartureMinutes ? (
+                                                            <span className="text-orange-600">Early -{formatMinutes(rec.earlyDepartureMinutes)}</span>
+                                                        ) : null}
+                                                        
+                                                        {rec.status !== 'Late' && rec.status !== 'Early Departure' && !rec.isLate && !rec.isEarlyDeparture && '—'}
                                                     </div>
                                                 </td>
                                             </tr>
@@ -905,12 +1101,14 @@ const MyAttendanceTab: React.FC = () => {
                                 <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-center">
                                     <div>
                                         <div className="font-bold text-lg text-green-600">
-                                            {myRecords.filter((r) => r.status === 'Present').length}
+                                            {/* 🔴 FIX THIS: Count both Present AND Late as Present */}
+                                            {myRecords.filter((r) => r.status === 'Present' || r.status === 'Late').length}
                                         </div>
                                         <div className="text-gray-600">Present</div>
                                     </div>
                                     <div>
                                         <div className="font-bold text-lg text-yellow-600">
+                                            {/* This stays the same - only count strictly Late */}
                                             {myRecords.filter((r) => r.status === 'Late').length}
                                         </div>
                                         <div className="text-gray-600">Late</div>
@@ -1247,7 +1445,10 @@ const EmployeeAttendanceHistory: React.FC = () => {
             if (records && records.length > 0) {
                 const stats = {
                     totalDays: records.length,
-                    presentDays: records.filter((r: any) => r.status === 'Present').length,
+                    // 🔴 FIX THIS: Count both Present AND Late as Present
+                    presentDays: records.filter((r: any) => 
+                        r.status === 'Present' || r.status === 'Late'
+                    ).length,
                     lateDays: records.filter((r: any) => r.status === 'Late').length,
                     earlyDepartureDays: records.filter((r: any) => r.status === 'Early Departure').length,
                     absentDays: records.filter((r: any) => r.status === 'Absent').length,
@@ -1640,6 +1841,69 @@ const BiometricUploadTab: React.FC = () => {
         return id.replace(/^EMP/i, '').trim();
     };
 
+    // Helper function to parse various date formats
+    const parseExcelDate = (dateValue: any): string => {
+        if (!dateValue) return '';
+        
+        const dateStr = dateValue.toString().trim();
+        
+        // Case 1: Already in YYYY-MM-DD format
+        if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+            return dateStr;
+        }
+        
+        // Case 2: YYYY-MM-DD HH:MM:SS format (with time)
+        if (/^\d{4}-\d{2}-\d{2}\s/.test(dateStr)) {
+            return dateStr.split(' ')[0];
+        }
+        
+        // Case 3: Excel serial date number (e.g., 46078 for 2026-02-24)
+        if (/^\d+$/.test(dateStr) && !isNaN(Number(dateStr))) {
+            try {
+                const excelDate = Number(dateStr);
+                // Excel serial date: days since 1900-01-01
+                const date = new Date((excelDate - 25569) * 86400 * 1000);
+                
+                if (!isNaN(date.getTime())) {
+                    const year = date.getFullYear();
+                    const month = String(date.getMonth() + 1).padStart(2, '0');
+                    const day = String(date.getDate()).padStart(2, '0');
+                    return `${year}-${month}-${day}`;
+                }
+            } catch (e) {
+                console.error('Error parsing Excel date:', e);
+            }
+        }
+        
+        // Case 4: DD-MM-YYYY format (what Excel might show)
+        if (/^\d{2}-\d{2}-\d{4}$/.test(dateStr)) {
+            const [day, month, year] = dateStr.split('-');
+            return `${year}-${month}-${day}`;
+        }
+        
+        // Case 5: DD/MM/YYYY format
+        if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
+            const [day, month, year] = dateStr.split('/');
+            return `${year}-${month}-${day}`;
+        }
+        
+        // Case 6: Try JavaScript Date parsing as last resort
+        try {
+            const date = new Date(dateStr);
+            if (!isNaN(date.getTime())) {
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+            }
+        } catch (e) {
+            // Ignore
+        }
+        
+        console.warn('Could not parse date, returning original:', dateStr);
+        return dateStr;
+    };
+
     const validateAttendanceData = (data: any[]): string[] => {
         const errors: string[] = [];
         
@@ -1666,9 +1930,12 @@ const BiometricUploadTab: React.FC = () => {
             if (!row['Date (YYYY-MM-DD)']) {
                 errors.push(`Row ${rowNum}: Date is required`);
             } else {
+                const dateStr = row['Date (YYYY-MM-DD)'].toString();
+                
+                // Check if it's a valid date format after parsing
                 const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-                if (!dateRegex.test(row['Date (YYYY-MM-DD)'])) {
-                    errors.push(`Row ${rowNum}: Date must be in YYYY-MM-DD format`);
+                if (!dateRegex.test(dateStr)) {
+                    errors.push(`Row ${rowNum}: Date must be in YYYY-MM-DD format. Found: "${dateStr}"`);
                 }
             }
 
@@ -1676,9 +1943,18 @@ const BiometricUploadTab: React.FC = () => {
             if (!row['Clock In Time (HH:MM)']) {
                 errors.push(`Row ${rowNum}: Clock In Time is required`);
             } else {
+                const timeStr = row['Clock In Time (HH:MM)'].toString();
+                
+                // Extract time part if it includes date
+                let timeToCheck = timeStr;
+                if (timeStr.includes(' ')) {
+                    const parts = timeStr.split(' ');
+                    timeToCheck = parts[parts.length - 1];
+                }
+                
                 const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
-                if (!timeRegex.test(row['Clock In Time (HH:MM)'])) {
-                    errors.push(`Row ${rowNum}: Clock In Time must be in HH:MM format`);
+                if (!timeRegex.test(timeToCheck)) {
+                    errors.push(`Row ${rowNum}: Clock In Time must be in HH:MM format. Found: "${timeStr}"`);
                 }
             }
         });
@@ -1705,9 +1981,11 @@ const BiometricUploadTab: React.FC = () => {
             }
             
             const worksheet = workbook.Sheets[firstSheetName];
+            
             const jsonData = XLSX.utils.sheet_to_json(worksheet, {
                 header: 1,
-                defval: ''
+                defval: '',
+                raw: false
             });
 
             if (jsonData.length < 2) {
@@ -1722,7 +2000,20 @@ const BiometricUploadTab: React.FC = () => {
             const formattedData = rows.map(row => {
                 const obj: any = {};
                 headers.forEach((header, index) => {
-                    obj[header] = row[index]?.toString().trim() || '';
+                    let value = row[index];
+                    
+                    if (value === undefined || value === null) {
+                        value = '';
+                    } else {
+                        value = value.toString().trim();
+                    }
+                    
+                    // Special handling for date field
+                    if (header === 'Date (YYYY-MM-DD)' && value) {
+                        value = parseExcelDate(value);
+                    }
+                    
+                    obj[header] = value;
                 });
                 return obj;
             }).filter(row => Object.values(row).some(val => val));
@@ -1768,11 +2059,20 @@ const BiometricUploadTab: React.FC = () => {
             const data = await file.arrayBuffer();
             const workbook = XLSX.read(data, { type: 'array' });
             const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-            const jsonData = XLSX.utils.sheet_to_json(worksheet);
+            
+            // IMPORTANT: Use the same parsing logic as handleFileChange
+            const jsonData = XLSX.utils.sheet_to_json(worksheet, {
+                header: 1,
+                defval: '',
+                raw: false
+            });
 
-            if (jsonData.length === 0) {
+            if (jsonData.length < 2) {
                 throw new Error('No data to upload');
             }
+
+            const headers = jsonData[0] as string[];
+            const rows = jsonData.slice(1) as any[][];
 
             const staffIdMap = new Map();
             employees.forEach(emp => {
@@ -1781,26 +2081,50 @@ const BiometricUploadTab: React.FC = () => {
                 }
             });
 
-            const attendanceRecords = jsonData.map((row: any) => {
-                const rawEmpId = row['Employee ID']?.toString().trim() || '';
-                const normalizedId = normalizeEmployeeId(rawEmpId);
-                const mongoId = staffIdMap.get(normalizedId);
-                
-                return {
-                    employeeId: mongoId,
-                    date: row['Date (YYYY-MM-DD)'],
-                    inTime: row['Clock In Time (HH:MM)'],
-                    outTime: row['Clock Out Time (HH:MM)'] || undefined,
-                    checkInMethod: row['Check In Method'] || 'Biometric',
-                    status: row['Status'] || undefined,
-                };
-            }).filter(record => record.employeeId);
+            // Parse each row properly with date handling
+            const attendanceRecords = rows
+                .map(row => {
+                    const obj: any = {};
+                    headers.forEach((header, index) => {
+                        let value = row[index];
+                        
+                        if (value === undefined || value === null) {
+                            value = '';
+                        } else {
+                            value = value.toString().trim();
+                        }
+                        
+                        // CRITICAL: Parse dates the same way as in handleFileChange
+                        if (header === 'Date (YYYY-MM-DD)' && value) {
+                            value = parseExcelDate(value);
+                        }
+                        
+                        obj[header] = value;
+                    });
+                    return obj;
+                })
+                .filter(row => row['Employee ID'] && row['Date (YYYY-MM-DD)'] && row['Clock In Time (HH:MM)'])
+                .map((row: any) => {
+                    const rawEmpId = row['Employee ID']?.toString().trim() || '';
+                    const normalizedId = normalizeEmployeeId(rawEmpId);
+                    const mongoId = staffIdMap.get(normalizedId);
+                    
+                    return {
+                        employeeId: mongoId,
+                        date: row['Date (YYYY-MM-DD)'], // Now properly parsed
+                        inTime: row['Clock In Time (HH:MM)'],
+                        outTime: row['Clock Out Time (HH:MM)'] || undefined,
+                        checkInMethod: row['Check In Method'] || 'Biometric',
+                        status: row['Status'] || undefined,
+                    };
+                })
+                .filter(record => record.employeeId);
 
             if (attendanceRecords.length === 0) {
                 throw new Error('No valid employee IDs found in the uploaded file');
             }
 
-            console.log('📤 Uploading records:', attendanceRecords);
+            console.log('📤 Uploading parsed records:', attendanceRecords);
             
             const result = await importAttendance(attendanceRecords);
             console.log('✅ Upload successful:', result);
@@ -1811,9 +2135,6 @@ const BiometricUploadTab: React.FC = () => {
                 total: attendanceRecords.length
             });
 
-            // Don't clear preview data immediately so user can see what was uploaded
-            // setFile(null);
-            // setPreviewData([]);
             if (fileInputRef.current) {
                 fileInputRef.current.value = '';
             }
@@ -1854,10 +2175,9 @@ const BiometricUploadTab: React.FC = () => {
             .filter(Boolean)
             .slice(0, 2);
         
-        const id1 = sampleStaffIds[0] || "001";
-        const id2 = sampleStaffIds[1] || "002";
+        const id1 = sampleStaffIds[0] || "YA001";
+        const id2 = sampleStaffIds[1] || "YA002";
 
-        // Get sample employee names for the template
         const emp1 = employees.find(e => e.staffId === id1);
         const emp2 = employees.find(e => e.staffId === id2);
 
@@ -1866,7 +2186,7 @@ const BiometricUploadTab: React.FC = () => {
                 'Employee ID': id1,
                 'Employee Name': emp1 ? `${emp1.firstName} ${emp1.lastName}` : 'John Doe',
                 'Designation': emp1?.designation || 'Employee',
-                'Date (YYYY-MM-DD)': '2024-02-20',
+                'Date (YYYY-MM-DD)': '2026-02-25',
                 'Clock In Time (HH:MM)': '08:00',
                 'Clock Out Time (HH:MM)': '19:00',
                 'Check In Method': 'Biometric',
@@ -1876,7 +2196,7 @@ const BiometricUploadTab: React.FC = () => {
                 'Employee ID': id2,
                 'Employee Name': emp2 ? `${emp2.firstName} ${emp2.lastName}` : 'Jane Smith',
                 'Designation': emp2?.designation || 'Employee',
-                'Date (YYYY-MM-DD)': '2024-02-20',
+                'Date (YYYY-MM-DD)': '2026-02-25',
                 'Clock In Time (HH:MM)': '08:15',
                 'Clock Out Time (HH:MM)': '18:45',
                 'Check In Method': 'Biometric',
@@ -1885,20 +2205,20 @@ const BiometricUploadTab: React.FC = () => {
         ];
 
         const ws = XLSX.utils.json_to_sheet(templateData);
+        
+        ws['!cols'] = [
+            { wch: 15 },
+            { wch: 25 },
+            { wch: 20 },
+            { wch: 20 },
+            { wch: 15 },
+            { wch: 15 },
+            { wch: 15 },
+            { wch: 15 }
+        ];
+
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, 'Template');
-        
-        // Set column widths
-        ws['!cols'] = [
-            { wch: 15 }, // Employee ID
-            { wch: 25 }, // Employee Name
-            { wch: 20 }, // Designation
-            { wch: 20 }, // Date
-            { wch: 15 }, // Clock In
-            { wch: 15 }, // Clock Out
-            { wch: 15 }, // Method
-            { wch: 15 }  // Status
-        ];
         
         XLSX.writeFile(wb, 'Attendance_Template.xlsx');
     };

@@ -1,10 +1,11 @@
-// hooks/useHRData.tsx - Complete HR Data Hook with Attendance Integration
+// hooks/useHRData.tsx - Complete HR Data Hook with Service Requests Integration
 import React, {
     createContext,
     useContext,
     useEffect,
     useState,
     useCallback,
+    useRef,
 } from 'react';
 import { api } from '../services/api';
 import { 
@@ -13,9 +14,10 @@ import {
     AttendanceRecord,
     Employee,
     Role,
-    User as UserAccount 
+    User as UserAccount,
+    ServiceRequest,
+    RequestStatus
 } from '../types';
-
 
 // Enums
 export enum WorkStatus {
@@ -73,7 +75,7 @@ export enum EnrollmentStatus {
 export type Gender = 'Male' | 'Female' | 'Other';
 export type AttendanceCheckInMethod = 'Manual' | 'GeoLocation' | 'Remote';
 
-// Interfaces (using your types from types.ts where applicable)
+// Interfaces
 export interface SystemSettings {
     companyName: string;
     logoUrl?: string;
@@ -104,22 +106,12 @@ export interface SalaryDeduction {
     isPercentage: boolean;
 }
 
-// export interface SalaryRecord {
-//     id: string;
-//     effectiveDate: string;
-//     baseSalary: number;
-//     allowances: SalaryAllowance[];
-//     deductions: SalaryDeduction[];
-//     currency: string;
-// }
-
 export interface EmploymentAuditTrailEntry {
     date: string;
     action: string;
     performedBy: string;
 }
 
-// TaskComment, Task, LeaveRequest, PermissionRequest etc from your existing code
 export interface TaskComment {
     id: string;
     authorId: string;
@@ -333,6 +325,7 @@ export interface HRDataContextType {
     employees: Employee[];
     systemSettings: SystemSettings;
     attendanceRecords: AttendanceRecord[];
+    serviceRequests: ServiceRequest[];
     tasks: Task[];
     leaveRequests: LeaveRequest[];
     permissionRequests: PermissionRequest[];
@@ -350,6 +343,7 @@ export interface HRDataContextType {
     refreshEmployees: () => Promise<void>;
     loadUsers: () => Promise<void>;
     loadRoles: () => Promise<void>;
+    loadServiceRequests: () => Promise<void>;
     validateUser: (username: string) => UserAccount | null;
     updateSystemSettings: (settings: Partial<SystemSettings>) => void;
     addEmployee: (employee: Omit<Employee, 'id' | 'auditTrail'>) => void;
@@ -366,17 +360,16 @@ export interface HRDataContextType {
     addTask: (task: Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'comments'>) => void;
     updateTask: (id: string, task: Partial<Task>) => void;
     deleteTask: (id: string) => void;
-    addLeaveRequest: (request: Omit<LeaveRequest, 'id' | 'status' | 'createdAt'>) => void;
-    addPermissionRequest: (request: Omit<PermissionRequest, 'id' | 'status' | 'createdAt'>) => void;
-    addCashAdvanceRequest: (request: Omit<CashAdvanceRequest, 'id' | 'status'>) => void;
-    addResignationRequest: (request: Omit<ResignationRequest, 'id' | 'status'>) => void;
+    addLeaveRequest: (request: any) => Promise<any>;
+    addPermissionRequest: (request: any) => Promise<any>;
+    addCashAdvanceRequest: (request: any) => Promise<any>;
+    addResignationRequest: (request: any) => Promise<any>;
     updateRequestStatus: (
-        type: 'leave' | 'permission' | 'cashAdvance' | 'resignation',
+        type: 'leave' | 'permission' | 'cash' | 'resignation',
         id: string,
-        status: LeaveStatus | CashAdvanceStatus | ResignationStatus,
-        approverId: string,
-        approverName: string
-    ) => void;
+        status: 'Approved' | 'Rejected',
+        notes?: string
+    ) => Promise<any>;
     generatePayroll: (month: number, year: number) => Promise<Payslip[]>;
     saveAppraisal: (appraisal: PerformanceAppraisal) => void;
     addTrainingProgram: (program: Omit<TrainingProgram, 'id'>) => void;
@@ -438,6 +431,7 @@ const useHRDataState = (): HRDataContextType => {
     const [employees, setEmployees] = useState<Employee[]>([]);
     const [systemSettings, setSystemSettings] = useState<SystemSettings>(defaultSystemSettings);
     const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
+    const [serviceRequests, setServiceRequests] = useState<ServiceRequest[]>([]);
     const [tasks, setTasks] = useState<Task[]>([]);
     const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
     const [permissionRequests, setPermissionRequests] = useState<PermissionRequest[]>([]);
@@ -452,19 +446,73 @@ const useHRDataState = (): HRDataContextType => {
     const [publicHolidays, setPublicHolidays] = useState<PublicHoliday[]>([]);
     const [payrollHistory, setPayrollHistory] = useState<Payslip[]>([]);
     const [chatbotContext, setChatbotContext] = useState<ChatbotUsageContext[]>([]);
+    const dataLoadedRef = useRef(false);
+    const loadingDataRef = useRef(false);
 
     // Load data functions
     const loadData = async () => {
+        // Prevent multiple simultaneous calls
+        if (loadingDataRef.current) {
+            console.log('🔄 Data loading already in progress, skipping...');
+            return;
+        }
+        
+        // If data already loaded, don't load again
+        if (dataLoadedRef.current) {
+            console.log('✅ Data already loaded, skipping...');
+            return;
+        }
+        
+        loadingDataRef.current = true;
         try {
             console.log('🔄 Loading data from API...');
             const employeesData = await api.getEmployees();
             console.log('✅ Employees loaded:', employeesData.length);
+            
+            // Log photoUrls for debugging
+            employeesData.forEach((emp: any) => {
+                if (emp.photoUrl) {
+                    console.log(`📸 Employee ${emp.staffId} has photoUrl:`, emp.photoUrl);
+                }
+            });
+            
             setEmployees(employeesData as any);
+            console.log('💾 Employees state updated');
+            
+            console.log('🔄 Loading attendance records...');
+            const attendanceData = await api.getAllAttendance();
+            setAttendanceRecords(attendanceData || []);
+            
+            // Mark as loaded
+            dataLoadedRef.current = true;
+            
         } catch (error) {
             console.error('❌ Error loading data:', error);
             setEmployees([]);
+            setAttendanceRecords([]);
+            // Reset on error so we can try again
+            dataLoadedRef.current = false;
+        } finally {
+            loadingDataRef.current = false;
         }
     };
+    // const loadData = async () => {
+    //     try {
+    //         console.log('🔄 Loading data from API...');
+    //         const employeesData = await api.getEmployees();
+    //         console.log('✅ Employees loaded:', employeesData.length);
+    //         setEmployees(employeesData as any);
+            
+    //         console.log('🔄 Loading attendance records...');
+    //         const attendanceData = await api.getAllAttendance();
+    //         setAttendanceRecords(attendanceData || []);
+            
+    //     } catch (error) {
+    //         console.error('❌ Error loading data:', error);
+    //         setEmployees([]);
+    //         setAttendanceRecords([]);
+    //     }
+    // };
 
     const loadUsers = async () => {
         try {
@@ -510,13 +558,99 @@ const useHRDataState = (): HRDataContextType => {
         }
     };
 
+    const loadServiceRequests = useCallback(async () => {
+        try {
+            console.log('🔄 Loading service requests from API...');
+            
+            // This will return [] on 404 now
+            const data = await api.getServiceRequests();
+            
+            console.log('✅ Service requests loaded successfully:', data?.length || 0);
+            setServiceRequests(data || []);
+            
+            // Update the individual request arrays
+            const leaveReqs = (data || []).filter((r: any) => r.requestType === 'leave');
+            const permissionReqs = (data || []).filter((r: any) => r.requestType === 'permission');
+            const cashReqs = (data || []).filter((r: any) => r.requestType === 'cash');
+            const resignReqs = (data || []).filter((r: any) => r.requestType === 'resignation');
+            
+            setLeaveRequests(leaveReqs.map((r: any) => ({
+                id: r.id,
+                employeeId: r.employeeId,
+                employeeName: r.employeeName,
+                leaveType: r.leaveType || 'Annual',
+                startDate: r.startDate || '',
+                endDate: r.endDate || '',
+                reason: r.reason,
+                status: r.status,
+                approverId: r.approverId,
+                approverName: r.approverName,
+                approvalDate: r.approvalDate,
+                createdAt: r.createdAt
+            })));
+            
+            setPermissionRequests(permissionReqs.map((r: any) => ({
+                id: r.id,
+                employeeId: r.employeeId,
+                employeeName: r.employeeName,
+                type: 'Permission',
+                date: r.permissionDate || '',
+                fromTime: r.startTime,
+                toTime: r.endTime,
+                reason: r.reason,
+                status: r.status,
+                approverId: r.approverId,
+                approverName: r.approverName,
+                approvalDate: r.approvalDate,
+                createdAt: r.createdAt
+            })));
+            
+            setCashAdvanceRequests(cashReqs.map((r: any) => ({
+                id: r.id,
+                employeeId: r.employeeId,
+                employeeName: r.employeeName,
+                requestDate: r.createdAt,
+                amount: r.amount || 0,
+                reason: r.reason,
+                status: r.status === 'Approved' ? 'Approved' : 
+                        r.status === 'Rejected' ? 'Rejected' : 'Requested',
+                approvalDate: r.approvalDate,
+                approverId: r.approverId,
+                approverName: r.approverName,
+                repaymentStartDate: r.repaymentDate
+            })));
+            
+            setResignationRequests(resignReqs.map((r: any) => ({
+                id: r.id,
+                employeeId: r.employeeId,
+                employeeName: r.employeeName,
+                submissionDate: r.createdAt,
+                lastWorkingDate: r.proposedLastDay || '',
+                reason: r.reason,
+                status: r.status === 'Approved' ? 'Accepted' :
+                        r.status === 'Rejected' ? 'Rejected' : 'Submitted',
+                approverId: r.approverId,
+                approverName: r.approverName,
+                approvalDate: r.approvalDate,
+                notes: r.managerNotes
+            })));
+            
+        } catch (error) {
+            console.error('❌ Error loading service requests:', error);
+            // Even on error, set empty arrays so loading stops
+            setServiceRequests([]);
+            setLeaveRequests([]);
+            setPermissionRequests([]);
+            setCashAdvanceRequests([]);
+            setResignationRequests([]);
+        }
+    }, []); // Empty dependency array means this function is created once
+
     const refreshEmployees = async () => {
         console.log('🔄 Refreshing employees from API...');
+        dataLoadedRef.current = false; // Reset so it loads again
         await loadData();
     };
-
-// CONTINUE IN NEXT FILE - THIS IS PART 1
-// hooks/useHRData.tsx - Part 2: Function Implementations
 
     // Employee functions
     const validateUser = (username: string): UserAccount | null => {
@@ -608,6 +742,7 @@ const useHRDataState = (): HRDataContextType => {
     const updateEmployee = async (id: string, employee: Partial<Employee>) => {
         try {
             console.log('Updating employee via NestJS API...', id);
+            console.log('📝 Update payload photoUrl:', employee.photoUrl);
             
             const updateData: any = {
                 ...employee,
@@ -619,7 +754,9 @@ const useHRDataState = (): HRDataContextType => {
                 updateData.dob = employee.dob;
             }
 
-            await api.updateEmployee(id, updateData);
+            const response = await api.updateEmployee(id, updateData);
+            console.log('✅ Update API response:', response);
+            console.log('📸 Response photoUrl:', response?.photoUrl);
 
             const auditEntry = {
                 date: new Date().toISOString(),
@@ -627,17 +764,21 @@ const useHRDataState = (): HRDataContextType => {
                 performedBy: 'system',
             };
 
-            setEmployees(prev =>
-                prev.map(e =>
+            setEmployees(prev => {
+                const updated = prev.map(e =>
                     e.id === id ? { 
                         ...e, 
                         ...employee,
+                        photoUrl: response?.photoUrl || employee.photoUrl, // Ensure photoUrl from response is used
                         auditTrail: [...(e.auditTrail || []), auditEntry]
                     } : e
-                )
-            );
+                );
+                console.log('💾 Local employees state updated');
+                return updated;
+            });
 
             console.log('✅ Employee updated via API:', id);
+            return response; // Return the response so caller can use it
         } catch (error) {
             console.error('❌ Error updating employee via API:', error);
             throw error;
@@ -725,16 +866,24 @@ const useHRDataState = (): HRDataContextType => {
         }
     };
 
-    const updateUser = async (id: string, account: any) => {
+    const updateUser = async (id: string, account: any) => {    
         try {
             console.log('Updating user via API...', id);
-            const response = await api.updateUser(id, {
+            
+            const updateData: any = {
                 username: account.username,
                 email: account.email,
                 roleId: account.roleId,
                 employeeId: account.employeeId,
                 isActive: account.isActive
-            });
+            };
+            
+            if (account.password) {
+                updateData.password = account.password;
+                console.log('🔑 Including new password in update');
+            }
+            
+            const response = await api.updateUser(id, updateData);
             
             setUsers(prev =>
                 prev.map(u =>
@@ -748,6 +897,8 @@ const useHRDataState = (): HRDataContextType => {
                     } : u
                 )
             );
+            
+            console.log('✅ User updated successfully');
         } catch (error) {
             console.error('❌ Error updating user:', error);
             throw error;
@@ -823,6 +974,121 @@ const useHRDataState = (): HRDataContextType => {
         }
     };
 
+    // Service Request functions
+    const addLeaveRequest = async (request: any) => {
+        try {
+            console.log('📤 Creating leave request via API...');
+            const response = await api.createServiceRequest({
+                employeeId: request.employeeId,
+                employeeName: request.employeeName,
+                requestType: 'leave',
+                leaveType: request.leaveType,
+                startDate: request.startDate,
+                endDate: request.endDate,
+                reason: request.reason
+            });
+            
+            setServiceRequests(prev => [response, ...prev]);
+            await loadServiceRequests();
+            
+            return response;
+        } catch (error) {
+            console.error('❌ Error creating leave request:', error);
+            throw error;
+        }
+    };
+
+    const addPermissionRequest = async (request: any) => {
+        try {
+            console.log('📤 Creating permission request via API...');
+            const response = await api.createServiceRequest({
+                employeeId: request.employeeId,
+                employeeName: request.employeeName,
+                requestType: 'permission',
+                permissionDate: request.permissionDate,
+                startTime: request.startTime,
+                endTime: request.endTime,
+                reason: request.reason
+            });
+            
+            setServiceRequests(prev => [response, ...prev]);
+            await loadServiceRequests();
+            
+            return response;
+        } catch (error) {
+            console.error('❌ Error creating permission request:', error);
+            throw error;
+        }
+    };
+
+    const addCashAdvanceRequest = async (request: any) => {
+        try {
+            console.log('📤 Creating cash advance request via API...');
+            const response = await api.createServiceRequest({
+                employeeId: request.employeeId,
+                employeeName: request.employeeName,
+                requestType: 'cash',
+                amount: request.amount,
+                repaymentDate: request.repaymentDate,
+                reason: request.reason
+            });
+            
+            setServiceRequests(prev => [response, ...prev]);
+            await loadServiceRequests();
+            
+            return response;
+        } catch (error) {
+            console.error('❌ Error creating cash advance request:', error);
+            throw error;
+        }
+    };
+
+    const addResignationRequest = async (request: any) => {
+        try {
+            console.log('📤 Creating resignation request via API...');
+            const response = await api.createServiceRequest({
+                employeeId: request.employeeId,
+                employeeName: request.employeeName,
+                requestType: 'resignation',
+                proposedLastDay: request.proposedLastDay,
+                reason: request.reason
+            });
+            
+            setServiceRequests(prev => [response, ...prev]);
+            await loadServiceRequests();
+            
+            return response;
+        } catch (error) {
+            console.error('❌ Error creating resignation request:', error);
+            throw error;
+        }
+    };
+
+    const updateRequestStatus = useCallback(async (
+        type: 'leave' | 'permission' | 'cash' | 'resignation',
+        id: string,
+        status: 'Approved' | 'Rejected',
+        notes?: string
+    ) => {
+        try {
+            console.log(`📤 Updating ${type} request ${id} to ${status}`);
+            const response = await api.updateServiceRequestStatus(id, status, notes);
+            
+            // Update local state
+            setServiceRequests(prev =>
+                prev.map(req => req.id === id ? { ...req, ...response } : req)
+            );
+            
+            // Refresh from server to be sure
+            await loadServiceRequests();
+            
+            return response;
+        } catch (error) {
+            console.error(`❌ Error updating ${type} request:`, error);
+            throw error;
+        }
+    }, [loadServiceRequests]);
+
     // Task functions (local state only)
     const addTask = (task: Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'comments'>) => {
         const id = `task_${Date.now()}`;
@@ -848,69 +1114,6 @@ const useHRDataState = (): HRDataContextType => {
 
     const deleteTask = (id: string) => {
         setTasks(prev => prev.filter(t => t.id !== id));
-    };
-
-    // Request functions (local state only)
-    const addLeaveRequest = (request: Omit<LeaveRequest, 'id' | 'status' | 'createdAt'>) => {
-        const id = `leave_${Date.now()}`;
-        const newRequest: LeaveRequest = {
-            ...request,
-            id,
-            status: LeaveStatus.PENDING,
-            createdAt: new Date().toISOString(),
-        };
-        setLeaveRequests(prev => [...prev, newRequest]);
-    };
-
-    const addPermissionRequest = (request: Omit<PermissionRequest, 'id' | 'status' | 'createdAt'>) => {
-        const id = `permission_${Date.now()}`;
-        const newRequest: PermissionRequest = {
-            ...request,
-            id,
-            status: LeaveStatus.PENDING,
-            createdAt: new Date().toISOString(),
-        };
-        setPermissionRequests(prev => [...prev, newRequest]);
-    };
-
-    const addCashAdvanceRequest = (request: Omit<CashAdvanceRequest, 'id' | 'status'>) => {
-        const id = `cash_${Date.now()}`;
-        const newRequest: CashAdvanceRequest = {
-            ...request,
-            id,
-            status: CashAdvanceStatus.REQUESTED,
-        };
-        setCashAdvanceRequests(prev => [...prev, newRequest]);
-    };
-
-    const addResignationRequest = (request: Omit<ResignationRequest, 'id' | 'status'>) => {
-        const id = `resign_${Date.now()}`;
-        const newRequest: ResignationRequest = {
-            ...request,
-            id,
-            status: ResignationStatus.SUBMITTED,
-        };
-        setResignationRequests(prev => [...prev, newRequest]);
-    };
-
-    const updateRequestStatus = (
-        type: 'leave' | 'permission' | 'cashAdvance' | 'resignation',
-        id: string,
-        status: LeaveStatus | CashAdvanceStatus | ResignationStatus,
-        approverId: string,
-        approverName: string
-    ) => {
-        console.log(`Updating ${type} request ${id} to ${status}`);
-    };
-
-    const generatePayroll = async (month: number, year: number): Promise<Payslip[]> => {
-        console.log('🔄 Generating payroll for:', month, year);
-        alert('Payroll generation is now handled in the Payroll page with Excel upload');
-        return [];
-    };
-
-    const saveAppraisal = (appraisal: PerformanceAppraisal) => {
-        console.log('Saving appraisal', appraisal);
     };
 
     // Training functions (local state only)
@@ -1042,16 +1245,28 @@ const useHRDataState = (): HRDataContextType => {
         return payrollHistory.filter(p => p.employeeId === employeeId);
     };
 
-// CONTINUE IN PART 3 - Attendance Functions
-// hooks/useHRData.tsx - Part 3: Attendance Functions & Export
+    const importAttendanceRecords = useCallback(async (records: AttendanceRecord[]): Promise<void> => {
+        try {
+            console.log('📤 Importing attendance records...', records.length);
+            const response = await api.importAttendance(records);
+            
+            setAttendanceRecords(prev => {
+                const byId = new Map<string, AttendanceRecord>();
+                prev.forEach(r => byId.set(r.id, r));
+                (response || []).forEach((r: AttendanceRecord) => {
+                    byId.set(r.id, r);
+                });
+                return Array.from(byId.values());
+            });
+            
+            console.log('✅ Imported', response?.length, 'records');
+        } catch (error) {
+            console.error('❌ Error importing attendance:', error);
+            throw error;
+        }
+    }, []);
 
-    // ============================================================================
-    // ATTENDANCE FUNCTIONS ⭐
-    // ============================================================================
-
-    /**
-     * Clock In function
-     */
+    // Attendance functions
     const clockIn = useCallback(async (
         employeeId: string, 
         location?: { latitude: number; longitude: number }
@@ -1071,18 +1286,14 @@ const useHRDataState = (): HRDataContextType => {
                 checkInLocation: location
             });
 
-            // Update local state with the new record
             if (response) {
                 setAttendanceRecords(prev => {
-                    // Check if record already exists for today
                     const existingIndex = prev.findIndex(r => r.employeeId === employeeId && r.date === dateStr);
                     if (existingIndex >= 0) {
-                        // Update existing record
                         const updated = [...prev];
                         updated[existingIndex] = { ...updated[existingIndex], ...response };
                         return updated;
                     } else {
-                        // Add new record
                         return [response, ...prev];
                     }
                 });
@@ -1102,9 +1313,6 @@ const useHRDataState = (): HRDataContextType => {
         }
     }, []);
 
-    /**
-     * Clock Out function
-     */
     const clockOut = useCallback(async (
         employeeId: string
     ): Promise<{ success: boolean; message: string; record?: AttendanceRecord }> => {
@@ -1115,7 +1323,6 @@ const useHRDataState = (): HRDataContextType => {
             
             console.log('🕐 Clocking out for employee:', employeeId);
             
-            // Get today's record first to calculate hours
             const todayStatus = await getTodayAttendanceStatus(employeeId);
             
             if (!todayStatus.hasClockedIn) {
@@ -1125,7 +1332,6 @@ const useHRDataState = (): HRDataContextType => {
                 };
             }
 
-            // Calculate work hours
             const inTime = todayStatus.record?.inTime;
             if (!inTime) {
                 return {
@@ -1153,7 +1359,6 @@ const useHRDataState = (): HRDataContextType => {
                 overtimeHours
             });
 
-            // Update local state
             if (response) {
                 setAttendanceRecords(prev => {
                     const existingIndex = prev.findIndex(r => r.employeeId === employeeId && r.date === dateStr);
@@ -1180,9 +1385,6 @@ const useHRDataState = (): HRDataContextType => {
         }
     }, []);
 
-    /**
-     * Get today's attendance status
-     */
     const getTodayAttendanceStatus = useCallback(async (employeeId: string): Promise<{
         hasClockedIn: boolean;
         hasClockedOut: boolean;
@@ -1191,7 +1393,6 @@ const useHRDataState = (): HRDataContextType => {
         try {
             const dateStr = new Date().toISOString().split('T')[0];
             
-            // First check local state for immediate updates
             const localRecord = attendanceRecords.find(
                 r => r.employeeId === employeeId && r.date === dateStr
             );
@@ -1204,7 +1405,6 @@ const useHRDataState = (): HRDataContextType => {
                 };
             }
 
-            // If not in local state, fetch from API
             const response = await api.getTodayAttendanceStatus(employeeId);
             return {
                 hasClockedIn: response.hasClockedIn || false,
@@ -1221,9 +1421,6 @@ const useHRDataState = (): HRDataContextType => {
         }
     }, [attendanceRecords]);
 
-    /**
-     * Get employee attendance history
-     */
     const getEmployeeAttendance = useCallback(async (
         employeeId: string,
         filters?: { month?: number; year?: number }
@@ -1231,7 +1428,6 @@ const useHRDataState = (): HRDataContextType => {
         try {
             const records = await api.getEmployeeAttendance(employeeId, filters);
             
-            // Update local state with fetched records
             if (records && records.length > 0) {
                 setAttendanceRecords(prev => {
                     const newRecords = [...prev];
@@ -1254,70 +1450,48 @@ const useHRDataState = (): HRDataContextType => {
         }
     }, []);
 
-    /**
-     * Import attendance records (for admin) ⭐ KEY FUNCTION
-     */
-    const importAttendanceRecords = useCallback(async (records: AttendanceRecord[]): Promise<void> => {
-        try {
-            console.log('📤 Importing attendance records...', records.length);
-            const response = await api.importAttendance(records);
-            
-            // Update local state
-            setAttendanceRecords(prev => {
-                const byId = new Map<string, AttendanceRecord>();
-                prev.forEach(r => byId.set(r.id, r));
-                (response || []).forEach((r: AttendanceRecord) => {
-                    byId.set(r.id, r);
-                });
-                return Array.from(byId.values());
-            });
-            
-            console.log('✅ Imported', response?.length, 'records');
-        } catch (error) {
-            console.error('❌ Error importing attendance:', error);
-            throw error;
-        }
-    }, []);
-
-    // Get only the current user's attendance records
     const getMyAttendance = useCallback((): AttendanceRecord[] => {
         return attendanceRecords;
     }, [attendanceRecords]);
 
-    // Get only the current user's payslips
     const getMyPayslips = useCallback((employeeId: string): Payslip[] => {
         if (!employeeId) return [];
         return payrollHistory.filter(payslip => payslip.employeeId === employeeId);
     }, [payrollHistory]);
 
-    // Get only the current user's leave requests
     const getMyLeaveRequests = useCallback((employeeId: string): LeaveRequest[] => {
         if (!employeeId) return [];
         return leaveRequests.filter(request => request.employeeId === employeeId);
     }, [leaveRequests]);
 
-    // Get only the current user's tasks
     const getMyTasks = useCallback((employeeId: string): Task[] => {
         if (!employeeId) return [];
         return tasks.filter(task => task.assignedToId === employeeId);
     }, [tasks]);
 
-    // For managers: get their team members
     const getMyTeamMembers = useCallback((managerId: string): Employee[] => {
         if (!managerId) return [];
         return employees.filter(emp => emp.managerId === managerId);
     }, [employees]);
 
-    // For managers: get their team's attendance
     const getTeamAttendance = useCallback((teamIds: string[]): AttendanceRecord[] => {
         if (!teamIds.length) return [];
         return attendanceRecords.filter(record => teamIds.includes(record.employeeId));
     }, [attendanceRecords]);
 
-    // Load data on mount - DO NOT FETCH UNTIL AUTHENTICATED
+    const generatePayroll = async (month: number, year: number): Promise<Payslip[]> => {
+        console.log('🔄 Generating payroll for:', month, year);
+        alert('Payroll generation is now handled in the Payroll page with Excel upload');
+        return [];
+    };
+
+    const saveAppraisal = (appraisal: PerformanceAppraisal) => {
+        console.log('Saving appraisal', appraisal);
+    };
+
+    // Load data on mount
     useEffect(() => {
         console.log('🎯 useHRData initialized - waiting for authentication');
-        // Data will be loaded by components when needed
     }, []);
 
     // Return all data and functions
@@ -1327,6 +1501,7 @@ const useHRDataState = (): HRDataContextType => {
         employees,
         systemSettings,
         attendanceRecords,
+        serviceRequests,
         tasks,
         leaveRequests,
         permissionRequests,
@@ -1357,6 +1532,7 @@ const useHRDataState = (): HRDataContextType => {
         refreshEmployees,
         loadUsers,
         loadRoles,
+        loadServiceRequests,
         addTask,
         updateTask,
         deleteTask,
@@ -1427,18 +1603,28 @@ export const useHRData = () => {
 export default useHRData;
 
 
+// // hooks/useHRData.tsx - Complete HR Data Hook with Service Requests Integration
 // import React, {
 //     createContext,
 //     useContext,
 //     useEffect,
 //     useState,
 //     useCallback,
+//     useRef,
 // } from 'react';
 // import { api } from '../services/api';
-// // import { CreateAttendanceDto } from '../types';
+// import { 
+//     CreateAttendanceDto, 
+//     SalaryRecord,
+//     AttendanceRecord,
+//     Employee,
+//     Role,
+//     User as UserAccount,
+//     ServiceRequest,
+//     RequestStatus
+// } from '../types';
 
-
-// // Enums used across the HR data models
+// // Enums
 // export enum WorkStatus {
 //     ACTIVE = 'Active',
 //     INACTIVE = 'Inactive',
@@ -1494,14 +1680,7 @@ export default useHRData;
 // export type Gender = 'Male' | 'Female' | 'Other';
 // export type AttendanceCheckInMethod = 'Manual' | 'GeoLocation' | 'Remote';
 
-// // Core data structures
-// export interface Role {
-//     id: string;
-//     name: string;
-//     permissions: string[];
-//     isSystem?: boolean;
-// }
-
+// // Interfaces
 // export interface SystemSettings {
 //     companyName: string;
 //     logoUrl?: string;
@@ -1532,85 +1711,10 @@ export default useHRData;
 //     isPercentage: boolean;
 // }
 
-// export interface SalaryRecord {
-//     id: string;
-//     effectiveDate: string;
-//     baseSalary: number;
-//     allowances: SalaryAllowance[];
-//     deductions: SalaryDeduction[];
-//     currency: string;
-// }
-
 // export interface EmploymentAuditTrailEntry {
 //     date: string;
 //     action: string;
 //     performedBy: string;
-// } 
-
-// export interface Employee {
-//     id: string;
-//     staffId: string;
-//     firstName: string;
-//     lastName: string;
-//     email: string;
-//     phone?: string;
-//     department: string;
-//     designation: string;
-//     gender: Gender;
-//     dateOfBirth?: string;
-//     dob?: string;
-//     joiningDate: string;
-//     workStatus: WorkStatus;
-//     salaryHistory: SalaryRecord[];
-//     currentSalaryId?: string;
-//     managerId?: string;
-//     location?: string;
-//     nationalIdNumber?: string;
-//     passportNumber?: string;
-//     nationality?: string;
-//     emergencyContactName?: string;
-//     emergencyContactRelationship?: string;
-//     emergencyContactPhone?: string;
-//     addressLine1?: string;
-//     addressLine2?: string;
-//     city?: string;
-//     country?: string;
-//     postalCode?: string;
-//     contractType?: string;
-//     contractStartDate?: string;
-//     contractEndDate?: string;
-//     probationEndDate?: string;
-//     photoUrl?: string | null;
-//     auditTrail: EmploymentAuditTrailEntry[];
-// }
-
-// export interface UserAccount {
-//     id: string;
-//     username: string;
-//     email?: string; 
-//     roleId: string;
-//     employeeId?: string;
-//     isActive: boolean;
-//     lastLogin?: string;
-//     createdAt: string;
-// }
-
-// export interface AttendanceRecord {
-//     id: string;
-//     employeeId: string;
-//     employeeName?: string;
-//     date: string;
-//     inTime?: string | null;
-//     outTime?: string | null;
-//     status: AttendanceStatus | string;
-//     workHours?: number;
-//     overtimeHours?: number;
-//     checkInMethod?: AttendanceCheckInMethod | string;
-//     checkInLocation?: {
-//         latitude: number;
-//         longitude: number;
-//     } | null;
-//     notes?: string;    
 // }
 
 // export interface TaskComment {
@@ -1819,12 +1923,14 @@ export default useHRData;
 //     netSalary: number;
 // }
 
+// // Main Context Type
 // export interface HRDataContextType {
 //     users: UserAccount[];
 //     roles: Role[];
 //     employees: Employee[];
 //     systemSettings: SystemSettings;
 //     attendanceRecords: AttendanceRecord[];
+//     serviceRequests: ServiceRequest[];
 //     tasks: Task[];
 //     leaveRequests: LeaveRequest[];
 //     permissionRequests: PermissionRequest[];
@@ -1840,11 +1946,9 @@ export default useHRData;
 //     payrollHistory: Payslip[];
 //     chatbotContext: ChatbotUsageContext[];
 //     refreshEmployees: () => Promise<void>;
-    
-//     // ✅ ADD THESE TWO LINES
 //     loadUsers: () => Promise<void>;
 //     loadRoles: () => Promise<void>;
-
+//     loadServiceRequests: () => Promise<void>;
 //     validateUser: (username: string) => UserAccount | null;
 //     updateSystemSettings: (settings: Partial<SystemSettings>) => void;
 //     addEmployee: (employee: Omit<Employee, 'id' | 'auditTrail'>) => void;
@@ -1861,17 +1965,16 @@ export default useHRData;
 //     addTask: (task: Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'comments'>) => void;
 //     updateTask: (id: string, task: Partial<Task>) => void;
 //     deleteTask: (id: string) => void;
-//     addLeaveRequest: (request: Omit<LeaveRequest, 'id' | 'status' | 'createdAt'>) => void;
-//     addPermissionRequest: (request: Omit<PermissionRequest, 'id' | 'status' | 'createdAt'>) => void;
-//     addCashAdvanceRequest: (request: Omit<CashAdvanceRequest, 'id' | 'status'>) => void;
-//     addResignationRequest: (request: Omit<ResignationRequest, 'id' | 'status'>) => void;
+//     addLeaveRequest: (request: any) => Promise<any>;
+//     addPermissionRequest: (request: any) => Promise<any>;
+//     addCashAdvanceRequest: (request: any) => Promise<any>;
+//     addResignationRequest: (request: any) => Promise<any>;
 //     updateRequestStatus: (
-//         type: 'leave' | 'permission' | 'cashAdvance' | 'resignation',                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                
+//         type: 'leave' | 'permission' | 'cash' | 'resignation',
 //         id: string,
-//         status: LeaveStatus | CashAdvanceStatus | ResignationStatus,
-//         approverId: string,
-//         approverName: string
-//     ) => void;
+//         status: 'Approved' | 'Rejected',
+//         notes?: string
+//     ) => Promise<any>;
 //     generatePayroll: (month: number, year: number) => Promise<Payslip[]>;
 //     saveAppraisal: (appraisal: PerformanceAppraisal) => void;
 //     addTrainingProgram: (program: Omit<TrainingProgram, 'id'>) => void;
@@ -1898,13 +2001,10 @@ export default useHRData;
 //     addPublicHoliday: (holiday: Omit<PublicHoliday, 'id'>) => void;
 //     deletePublicHoliday: (id: string) => void;
 //     getEmployeePayslips: (employeeId: string) => Payslip[];
-    
-//     // ✅ ADD THESE NEW ATTENDANCE FUNCTIONS
 //     clockIn: (employeeId: string, location?: { latitude: number; longitude: number }) => Promise<{ success: boolean; message: string; record?: AttendanceRecord }>;
 //     clockOut: (employeeId: string) => Promise<{ success: boolean; message: string; record?: AttendanceRecord }>;
 //     getTodayAttendanceStatus: (employeeId: string) => Promise<{ hasClockedIn: boolean; hasClockedOut: boolean; record: AttendanceRecord | null }>;
 //     getEmployeeAttendance: (employeeId: string, filters?: { month?: number; year?: number }) => Promise<AttendanceRecord[]>;
-
 //     getMyAttendance: () => AttendanceRecord[];
 //     getMyPayslips: (employeeId: string) => Payslip[];
 //     getMyLeaveRequests: (employeeId: string) => LeaveRequest[];
@@ -1912,7 +2012,6 @@ export default useHRData;
 //     getMyTeamMembers: (managerId: string) => Employee[];
 //     getTeamAttendance: (teamIds: string[]) => AttendanceRecord[];
 // }
-
 
 // const defaultSystemSettings: SystemSettings = {
 //     companyName: 'YesPeople HRIS',
@@ -1930,12 +2029,14 @@ export default useHRData;
 //     }
 // };
 
+// // Hook implementation
 // const useHRDataState = (): HRDataContextType => {
 //     const [users, setUsers] = useState<UserAccount[]>([]);
 //     const [roles, setRoles] = useState<Role[]>([]);
 //     const [employees, setEmployees] = useState<Employee[]>([]);
 //     const [systemSettings, setSystemSettings] = useState<SystemSettings>(defaultSystemSettings);
 //     const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
+//     const [serviceRequests, setServiceRequests] = useState<ServiceRequest[]>([]);
 //     const [tasks, setTasks] = useState<Task[]>([]);
 //     const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
 //     const [permissionRequests, setPermissionRequests] = useState<PermissionRequest[]>([]);
@@ -1950,31 +2051,65 @@ export default useHRData;
 //     const [publicHolidays, setPublicHolidays] = useState<PublicHoliday[]>([]);
 //     const [payrollHistory, setPayrollHistory] = useState<Payslip[]>([]);
 //     const [chatbotContext, setChatbotContext] = useState<ChatbotUsageContext[]>([]);
+//     const dataLoadedRef = useRef(false);
+//     const loadingDataRef = useRef(false);
 
-//     // Load employees from API
+//     // Load data functions
 //     const loadData = async () => {
+//         // Prevent multiple simultaneous calls
+//         if (loadingDataRef.current) {
+//             console.log('🔄 Data loading already in progress, skipping...');
+//             return;
+//         }
+        
+//         // If data already loaded, don't load again
+//         if (dataLoadedRef.current) {
+//             console.log('✅ Data already loaded, skipping...');
+//             return;
+//         }
+        
+//         loadingDataRef.current = true;
 //         try {
 //             console.log('🔄 Loading data from API...');
-//             console.log('📡 API URL: http://localhost:5000/employees');
-            
 //             const employeesData = await api.getEmployees();
-//             console.log('✅ API Response:', employeesData);
-//             console.log('📊 Number of employees:', employeesData.length);
-            
-//             if (employeesData.length > 0) {
-//                 console.log('👤 First employee:', employeesData[0]);
-//             }
-            
+//             console.log('✅ Employees loaded:', employeesData.length);
 //             setEmployees(employeesData as any);
-//             console.log('✅ Employees set in state:', employeesData.length);
+            
+//             console.log('🔄 Loading attendance records...');
+//             const attendanceData = await api.getAllAttendance();
+//             setAttendanceRecords(attendanceData || []);
+            
+//             // Mark as loaded
+//             dataLoadedRef.current = true;
             
 //         } catch (error) {
 //             console.error('❌ Error loading data:', error);
 //             setEmployees([]);
+//             setAttendanceRecords([]);
+//             // Reset on error so we can try again
+//             dataLoadedRef.current = false;
+//         } finally {
+//             loadingDataRef.current = false;
 //         }
 //     };
+//     // const loadData = async () => {
+//     //     try {
+//     //         console.log('🔄 Loading data from API...');
+//     //         const employeesData = await api.getEmployees();
+//     //         console.log('✅ Employees loaded:', employeesData.length);
+//     //         setEmployees(employeesData as any);
+            
+//     //         console.log('🔄 Loading attendance records...');
+//     //         const attendanceData = await api.getAllAttendance();
+//     //         setAttendanceRecords(attendanceData || []);
+            
+//     //     } catch (error) {
+//     //         console.error('❌ Error loading data:', error);
+//     //         setEmployees([]);
+//     //         setAttendanceRecords([]);
+//     //     }
+//     // };
 
-//     // ============ LOAD USERS & ROLES FUNCTIONS - ADD THIS AFTER loadData() ============
 //     const loadUsers = async () => {
 //         try {
 //             console.log('🔄 Loading users from API...');
@@ -2019,14 +2154,101 @@ export default useHRData;
 //         }
 //     };
 
+//     const loadServiceRequests = useCallback(async () => {
+//         try {
+//             console.log('🔄 Loading service requests from API...');
+            
+//             // This will return [] on 404 now
+//             const data = await api.getServiceRequests();
+            
+//             console.log('✅ Service requests loaded successfully:', data?.length || 0);
+//             setServiceRequests(data || []);
+            
+//             // Update the individual request arrays
+//             const leaveReqs = (data || []).filter((r: any) => r.requestType === 'leave');
+//             const permissionReqs = (data || []).filter((r: any) => r.requestType === 'permission');
+//             const cashReqs = (data || []).filter((r: any) => r.requestType === 'cash');
+//             const resignReqs = (data || []).filter((r: any) => r.requestType === 'resignation');
+            
+//             setLeaveRequests(leaveReqs.map((r: any) => ({
+//                 id: r.id,
+//                 employeeId: r.employeeId,
+//                 employeeName: r.employeeName,
+//                 leaveType: r.leaveType || 'Annual',
+//                 startDate: r.startDate || '',
+//                 endDate: r.endDate || '',
+//                 reason: r.reason,
+//                 status: r.status,
+//                 approverId: r.approverId,
+//                 approverName: r.approverName,
+//                 approvalDate: r.approvalDate,
+//                 createdAt: r.createdAt
+//             })));
+            
+//             setPermissionRequests(permissionReqs.map((r: any) => ({
+//                 id: r.id,
+//                 employeeId: r.employeeId,
+//                 employeeName: r.employeeName,
+//                 type: 'Permission',
+//                 date: r.permissionDate || '',
+//                 fromTime: r.startTime,
+//                 toTime: r.endTime,
+//                 reason: r.reason,
+//                 status: r.status,
+//                 approverId: r.approverId,
+//                 approverName: r.approverName,
+//                 approvalDate: r.approvalDate,
+//                 createdAt: r.createdAt
+//             })));
+            
+//             setCashAdvanceRequests(cashReqs.map((r: any) => ({
+//                 id: r.id,
+//                 employeeId: r.employeeId,
+//                 employeeName: r.employeeName,
+//                 requestDate: r.createdAt,
+//                 amount: r.amount || 0,
+//                 reason: r.reason,
+//                 status: r.status === 'Approved' ? 'Approved' : 
+//                         r.status === 'Rejected' ? 'Rejected' : 'Requested',
+//                 approvalDate: r.approvalDate,
+//                 approverId: r.approverId,
+//                 approverName: r.approverName,
+//                 repaymentStartDate: r.repaymentDate
+//             })));
+            
+//             setResignationRequests(resignReqs.map((r: any) => ({
+//                 id: r.id,
+//                 employeeId: r.employeeId,
+//                 employeeName: r.employeeName,
+//                 submissionDate: r.createdAt,
+//                 lastWorkingDate: r.proposedLastDay || '',
+//                 reason: r.reason,
+//                 status: r.status === 'Approved' ? 'Accepted' :
+//                         r.status === 'Rejected' ? 'Rejected' : 'Submitted',
+//                 approverId: r.approverId,
+//                 approverName: r.approverName,
+//                 approvalDate: r.approvalDate,
+//                 notes: r.managerNotes
+//             })));
+            
+//         } catch (error) {
+//             console.error('❌ Error loading service requests:', error);
+//             // Even on error, set empty arrays so loading stops
+//             setServiceRequests([]);
+//             setLeaveRequests([]);
+//             setPermissionRequests([]);
+//             setCashAdvanceRequests([]);
+//             setResignationRequests([]);
+//         }
+//     }, []); // Empty dependency array means this function is created once
+
 //     const refreshEmployees = async () => {
 //         console.log('🔄 Refreshing employees from API...');
+//         dataLoadedRef.current = false; // Reset so it loads again
 //         await loadData();
 //     };
 
-
-    
-//     // 🔥 FIXED: Employee functions with correct signatures
+//     // Employee functions
 //     const validateUser = (username: string): UserAccount | null => {
 //         const user = users.find(u => u.username.toLowerCase() === username.toLowerCase());
 //         return user || null;
@@ -2036,46 +2258,32 @@ export default useHRData;
 //         setSystemSettings(prev => ({ ...prev, ...settings }));
 //     };
 
-//     // 🔥 FIXED: Removed createdByUserId parameter to match interface
 //     const addEmployee = async (employee: any) => {
 //         try {
 //             console.log('Creating employee via NestJS API...');
             
-//             // IMPORTANT: Use the field names that match your frontend form data
-//             // These are the actual fields coming from PersonnelPage.tsx handleSave
 //             const employeeData = {
-//                 // Core required fields - these MUST match what the backend expects
 //                 staffId: employee.staffId,
 //                 firstName: employee.firstName,
 //                 lastName: employee.lastName,
 //                 email: employee.email,
 //                 phone: employee.phone,
-                
-//                 // ✅ CRITICAL: Use these field names - this is what your backend needs
-//                 designation: employee.designation || '',  // NOT jobTitle
-//                 joiningDate: employee.joiningDate || '',  // NOT hireDate
+//                 designation: employee.designation || '',
+//                 joiningDate: employee.joiningDate || '',
 //                 department: employee.department || '',
 //                 workStatus: employee.workStatus || 'Active',
-                
-//                 // Personal info
 //                 middleName: employee.middleName || '',
 //                 gender: employee.gender || 'Male',
 //                 dob: employee.dob || null,
 //                 nationality: employee.nationality || '',
 //                 maritalStatus: employee.maritalStatus || 'Single',
-//                 address: employee.address || '',  // NOT addressLine1
-                
-//                 // Employment
-//                 reportingManagerId: employee.reportingManagerId || '',  // NOT managerId
+//                 address: employee.address || '',
+//                 reportingManagerId: employee.reportingManagerId || '',
 //                 remarks: employee.remarks || '',
-                
-//                 // Salary fields
 //                 baseSalary: Number(employee.baseSalary) || 0,
 //                 previousSalary: Number(employee.previousSalary) || 0,
 //                 presentGrossSalary: Number(employee.presentGrossSalary) || 0,
 //                 allowances: employee.allowances || [],
-                
-//                 // Payroll fields
 //                 payrollCode: employee.payrollCode || '',
 //                 payFrequency: employee.payFrequency || 'Monthly',
 //                 targetRate: Number(employee.targetRate) || 0,
@@ -2083,47 +2291,30 @@ export default useHRData;
 //                 iban: employee.iban || '',
 //                 isTaxable: !!employee.isTaxable,
 //                 isOvertimeEligible: !!employee.isOvertimeEligible,
-                
-//                 // Identity fields - use these exact names
-//                 passportNo: employee.passportNo || '',  // NOT passportNumber
+//                 passportNo: employee.passportNo || '',
 //                 passportExp: employee.passportExp || null,
 //                 visaStatus: employee.visaStatus || 'Active',
 //                 visaStartDate: employee.visaStartDate || null,
 //                 visaExpDate: employee.visaExpDate || null,
-//                 eidNumber: employee.eidNumber || '',  // NOT nationalIdNumber
+//                 eidNumber: employee.eidNumber || '',
 //                 eidIssueDate: employee.eidIssueDate || null,
 //                 eidExpDate: employee.eidExpDate || null,
-                
-//                 // Other fields
 //                 documents: employee.documents || [],
 //                 emergencyContact: employee.emergencyContact || { 
 //                     name: '', 
 //                     relationship: '', 
 //                     phone: '' 
-//                 },  // Use the object directly, NOT individual fields
+//                 },
 //                 leaveBalances: employee.leaveBalances || {},
 //                 customFieldValues: employee.customFieldValues || {},
-                
-//                 // Backend also expects 'status' field (maybe duplicate of workStatus)
 //                 status: employee.workStatus || 'Active'
 //             };
 
-//             // Log the data being sent for debugging
 //             console.log('📤 Sending to API:', JSON.stringify(employeeData, null, 2));
             
-//             // Verify required fields are present
-//             const requiredFields = ['staffId', 'firstName', 'lastName', 'email', 'phone', 
-//                                 'designation', 'joiningDate', 'department'];
-//             const missingFields = requiredFields.filter(field => !employeeData[field]);
-            
-//             if (missingFields.length > 0) {
-//                 throw new Error(`Missing required fields: ${missingFields.join(', ')}`);
-//             }
-
 //             const response = await api.createEmployee(employeeData);
 //             console.log('✅ API Response:', response);
             
-//             // Create the new employee object for local state
 //             const newEmployee: Employee = {
 //                 ...employee,
 //                 id: response.id || response._id,
@@ -2144,19 +2335,16 @@ export default useHRData;
 //         }
 //     };
 
-//     // 🔥 FIXED: Removed updatedByUserId parameter to match interface
 //     const updateEmployee = async (id: string, employee: Partial<Employee>) => {
 //         try {
 //             console.log('Updating employee via NestJS API...', id);
             
-//             // Create a properly typed update object
 //             const updateData: any = {
 //                 ...employee,
 //                 designation: employee.designation,
 //                 joiningDate: employee.joiningDate,
 //             };
             
-//             // Add dob only if it exists
 //             if (employee.dob) {
 //                 updateData.dob = employee.dob;
 //             }
@@ -2192,18 +2380,6 @@ export default useHRData;
 //             await api.deleteEmployee(id);
 //             setEmployees(prev => prev.filter(e => e.id !== id));
 //             console.log('✅ Employee deleted via API:', id);
-//         } catch (error) {
-//             console.error('❌ Error deleting employee via API:', error);
-//             throw error;
-//         }
-//     };
-
-//     const deleteEmployeeAndUser = async (employeeId: string) => {
-//         try {
-//             console.log('Deleting employee and user via API...', employeeId);
-//             await api.deleteEmployee(employeeId);
-//             setEmployees(prev => prev.filter(e => e.id !== employeeId));
-//             console.log('✅ Employee deleted via API');
 //         } catch (error) {
 //             console.error('❌ Error deleting employee via API:', error);
 //             throw error;
@@ -2248,7 +2424,7 @@ export default useHRData;
 //         []
 //     );
 
-//     // 🔥 FIXED: Commented out Firebase functions - you need to implement these with your backend API
+//     // User/Role functions
 //     const addUser = async (account: any) => {
 //         try {
 //             console.log('Creating user via API...');
@@ -2279,17 +2455,24 @@ export default useHRData;
 //         }
 //     };
 
-//     // ============ REPLACE the updateUser function (around line 380) ============
-//     const updateUser = async (id: string, account: any) => {
+//     const updateUser = async (id: string, account: any) => {    
 //         try {
 //             console.log('Updating user via API...', id);
-//             const response = await api.updateUser(id, {
+            
+//             const updateData: any = {
 //                 username: account.username,
 //                 email: account.email,
 //                 roleId: account.roleId,
 //                 employeeId: account.employeeId,
 //                 isActive: account.isActive
-//             });
+//             };
+            
+//             if (account.password) {
+//                 updateData.password = account.password;
+//                 console.log('🔑 Including new password in update');
+//             }
+            
+//             const response = await api.updateUser(id, updateData);
             
 //             setUsers(prev =>
 //                 prev.map(u =>
@@ -2303,13 +2486,14 @@ export default useHRData;
 //                     } : u
 //                 )
 //             );
+            
+//             console.log('✅ User updated successfully');
 //         } catch (error) {
 //             console.error('❌ Error updating user:', error);
 //             throw error;
 //         }
 //     };
 
-//     // ============ REPLACE the deleteUser function (around line 400) ============
 //     const deleteUser = async (id: string) => {
 //         try {
 //             console.log('Deleting user via API...', id);
@@ -2345,7 +2529,6 @@ export default useHRData;
 //         }
 //     };
 
-//     // ============ REPLACE the updateRole function (around line 430) ============
 //     const updateRole = async (id: string, roleData: any, updatedByUserId?: string): Promise<void> => {
 //         try {
 //             console.log('Updating role via API...', id);
@@ -2369,7 +2552,6 @@ export default useHRData;
 //         }
 //     };
 
-//     // ============ REPLACE the deleteRole function (around line 450) ============
 //     const deleteRole = async (id: string): Promise<void> => {
 //         try {
 //             console.log('Deleting role via API...', id);
@@ -2381,7 +2563,122 @@ export default useHRData;
 //         }
 //     };
 
-//     // Task functions (local state only - no backend)
+//     // Service Request functions
+//     const addLeaveRequest = async (request: any) => {
+//         try {
+//             console.log('📤 Creating leave request via API...');
+//             const response = await api.createServiceRequest({
+//                 employeeId: request.employeeId,
+//                 employeeName: request.employeeName,
+//                 requestType: 'leave',
+//                 leaveType: request.leaveType,
+//                 startDate: request.startDate,
+//                 endDate: request.endDate,
+//                 reason: request.reason
+//             });
+            
+//             setServiceRequests(prev => [response, ...prev]);
+//             await loadServiceRequests();
+            
+//             return response;
+//         } catch (error) {
+//             console.error('❌ Error creating leave request:', error);
+//             throw error;
+//         }
+//     };
+
+//     const addPermissionRequest = async (request: any) => {
+//         try {
+//             console.log('📤 Creating permission request via API...');
+//             const response = await api.createServiceRequest({
+//                 employeeId: request.employeeId,
+//                 employeeName: request.employeeName,
+//                 requestType: 'permission',
+//                 permissionDate: request.permissionDate,
+//                 startTime: request.startTime,
+//                 endTime: request.endTime,
+//                 reason: request.reason
+//             });
+            
+//             setServiceRequests(prev => [response, ...prev]);
+//             await loadServiceRequests();
+            
+//             return response;
+//         } catch (error) {
+//             console.error('❌ Error creating permission request:', error);
+//             throw error;
+//         }
+//     };
+
+//     const addCashAdvanceRequest = async (request: any) => {
+//         try {
+//             console.log('📤 Creating cash advance request via API...');
+//             const response = await api.createServiceRequest({
+//                 employeeId: request.employeeId,
+//                 employeeName: request.employeeName,
+//                 requestType: 'cash',
+//                 amount: request.amount,
+//                 repaymentDate: request.repaymentDate,
+//                 reason: request.reason
+//             });
+            
+//             setServiceRequests(prev => [response, ...prev]);
+//             await loadServiceRequests();
+            
+//             return response;
+//         } catch (error) {
+//             console.error('❌ Error creating cash advance request:', error);
+//             throw error;
+//         }
+//     };
+
+//     const addResignationRequest = async (request: any) => {
+//         try {
+//             console.log('📤 Creating resignation request via API...');
+//             const response = await api.createServiceRequest({
+//                 employeeId: request.employeeId,
+//                 employeeName: request.employeeName,
+//                 requestType: 'resignation',
+//                 proposedLastDay: request.proposedLastDay,
+//                 reason: request.reason
+//             });
+            
+//             setServiceRequests(prev => [response, ...prev]);
+//             await loadServiceRequests();
+            
+//             return response;
+//         } catch (error) {
+//             console.error('❌ Error creating resignation request:', error);
+//             throw error;
+//         }
+//     };
+
+//     const updateRequestStatus = useCallback(async (
+//         type: 'leave' | 'permission' | 'cash' | 'resignation',
+//         id: string,
+//         status: 'Approved' | 'Rejected',
+//         notes?: string
+//     ) => {
+//         try {
+//             console.log(`📤 Updating ${type} request ${id} to ${status}`);
+//             const response = await api.updateServiceRequestStatus(id, status, notes);
+            
+//             // Update local state
+//             setServiceRequests(prev =>
+//                 prev.map(req => req.id === id ? { ...req, ...response } : req)
+//             );
+            
+//             // Refresh from server to be sure
+//             await loadServiceRequests();
+            
+//             return response;
+//         } catch (error) {
+//             console.error(`❌ Error updating ${type} request:`, error);
+//             throw error;
+//         }
+//     }, [loadServiceRequests]);
+
+//     // Task functions (local state only)
 //     const addTask = (task: Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'comments'>) => {
 //         const id = `task_${Date.now()}`;
 //         const now = new Date().toISOString();
@@ -2406,71 +2703,6 @@ export default useHRData;
 
 //     const deleteTask = (id: string) => {
 //         setTasks(prev => prev.filter(t => t.id !== id));
-//     };
-
-//     // Request functions (local state only - no backend)
-//     const addLeaveRequest = (request: Omit<LeaveRequest, 'id' | 'status' | 'createdAt'>) => {
-//         const id = `leave_${Date.now()}`;
-//         const newRequest: LeaveRequest = {
-//             ...request,
-//             id,
-//             status: LeaveStatus.PENDING,
-//             createdAt: new Date().toISOString(),
-//         };
-//         setLeaveRequests(prev => [...prev, newRequest]);
-//     };
-
-//     const addPermissionRequest = (request: Omit<PermissionRequest, 'id' | 'status' | 'createdAt'>) => {
-//         const id = `permission_${Date.now()}`;
-//         const newRequest: PermissionRequest = {
-//             ...request,
-//             id,
-//             status: LeaveStatus.PENDING,
-//             createdAt: new Date().toISOString(),
-//         };
-//         setPermissionRequests(prev => [...prev, newRequest]);
-//     };
-
-//     const addCashAdvanceRequest = (request: Omit<CashAdvanceRequest, 'id' | 'status'>) => {
-//         const id = `cash_${Date.now()}`;
-//         const newRequest: CashAdvanceRequest = {
-//             ...request,
-//             id,
-//             status: CashAdvanceStatus.REQUESTED,
-//         };
-//         setCashAdvanceRequests(prev => [...prev, newRequest]);
-//     };
-
-//     const addResignationRequest = (request: Omit<ResignationRequest, 'id' | 'status'>) => {
-//         const id = `resign_${Date.now()}`;
-//         const newRequest: ResignationRequest = {
-//             ...request,
-//             id,
-//             status: ResignationStatus.SUBMITTED,
-//         };
-//         setResignationRequests(prev => [...prev, newRequest]);
-//     };
-
-//     const updateRequestStatus = (
-//         type: 'leave' | 'permission' | 'cashAdvance' | 'resignation',
-//         id: string,
-//         status: LeaveStatus | CashAdvanceStatus | ResignationStatus,
-//         approverId: string,
-//         approverName: string
-//     ) => {
-//         console.log(`Updating ${type} request ${id} to ${status}`);
-//         // TODO: Implement with backend API
-//     };
-
-//     // 🔥 FIXED: Payroll generation - now uses Excel upload, not Firebase
-//     const generatePayroll = async (month: number, year: number): Promise<Payslip[]> => {
-//         console.log('🔄 Generating payroll for:', month, year);
-//         alert('Payroll generation is now handled in the Payroll page with Excel upload');
-//         return [];
-//     };
-
-//     const saveAppraisal = (appraisal: PerformanceAppraisal) => {
-//         console.log('Saving appraisal', appraisal);
 //     };
 
 //     // Training functions (local state only)
@@ -2549,7 +2781,6 @@ export default useHRData;
 //         setPolicies(prev => prev.filter(p => p.id !== id));
 //     };
 
-//     // 🔥 FIXED: Attendance functions - removed Firebase
 //     const addRemoteAttendanceRecord = (
 //         employeeId: string,
 //         location: { latitude: number; longitude: number }
@@ -2603,9 +2834,28 @@ export default useHRData;
 //         return payrollHistory.filter(p => p.employeeId === employeeId);
 //     };
 
-//     // ============ ATTENDANCE FUNCTIONS ============
+//     const importAttendanceRecords = useCallback(async (records: AttendanceRecord[]): Promise<void> => {
+//         try {
+//             console.log('📤 Importing attendance records...', records.length);
+//             const response = await api.importAttendance(records);
+            
+//             setAttendanceRecords(prev => {
+//                 const byId = new Map<string, AttendanceRecord>();
+//                 prev.forEach(r => byId.set(r.id, r));
+//                 (response || []).forEach((r: AttendanceRecord) => {
+//                     byId.set(r.id, r);
+//                 });
+//                 return Array.from(byId.values());
+//             });
+            
+//             console.log('✅ Imported', response?.length, 'records');
+//         } catch (error) {
+//             console.error('❌ Error importing attendance:', error);
+//             throw error;
+//         }
+//     }, []);
 
-//     // Clock In function
+//     // Attendance functions
 //     const clockIn = useCallback(async (
 //         employeeId: string, 
 //         location?: { latitude: number; longitude: number }
@@ -2625,18 +2875,14 @@ export default useHRData;
 //                 checkInLocation: location
 //             });
 
-//             // Update local state with the new record
 //             if (response) {
 //                 setAttendanceRecords(prev => {
-//                     // Check if record already exists for today
 //                     const existingIndex = prev.findIndex(r => r.employeeId === employeeId && r.date === dateStr);
 //                     if (existingIndex >= 0) {
-//                         // Update existing record
 //                         const updated = [...prev];
 //                         updated[existingIndex] = { ...updated[existingIndex], ...response };
 //                         return updated;
 //                     } else {
-//                         // Add new record
 //                         return [response, ...prev];
 //                     }
 //                 });
@@ -2656,7 +2902,6 @@ export default useHRData;
 //         }
 //     }, []);
 
-//     // Clock Out function
 //     const clockOut = useCallback(async (
 //         employeeId: string
 //     ): Promise<{ success: boolean; message: string; record?: AttendanceRecord }> => {
@@ -2667,7 +2912,6 @@ export default useHRData;
             
 //             console.log('🕐 Clocking out for employee:', employeeId);
             
-//             // Get today's record first to calculate hours
 //             const todayStatus = await getTodayAttendanceStatus(employeeId);
             
 //             if (!todayStatus.hasClockedIn) {
@@ -2677,7 +2921,6 @@ export default useHRData;
 //                 };
 //             }
 
-//             // Calculate work hours
 //             const inTime = todayStatus.record?.inTime;
 //             if (!inTime) {
 //                 return {
@@ -2705,7 +2948,6 @@ export default useHRData;
 //                 overtimeHours
 //             });
 
-//             // Update local state
 //             if (response) {
 //                 setAttendanceRecords(prev => {
 //                     const existingIndex = prev.findIndex(r => r.employeeId === employeeId && r.date === dateStr);
@@ -2732,7 +2974,6 @@ export default useHRData;
 //         }
 //     }, []);
 
-//     // Get today's attendance status
 //     const getTodayAttendanceStatus = useCallback(async (employeeId: string): Promise<{
 //         hasClockedIn: boolean;
 //         hasClockedOut: boolean;
@@ -2741,7 +2982,6 @@ export default useHRData;
 //         try {
 //             const dateStr = new Date().toISOString().split('T')[0];
             
-//             // First check local state for immediate updates
 //             const localRecord = attendanceRecords.find(
 //                 r => r.employeeId === employeeId && r.date === dateStr
 //             );
@@ -2754,7 +2994,6 @@ export default useHRData;
 //                 };
 //             }
 
-//             // If not in local state, fetch from API
 //             const response = await api.getTodayAttendanceStatus(employeeId);
 //             return {
 //                 hasClockedIn: response.hasClockedIn || false,
@@ -2771,7 +3010,6 @@ export default useHRData;
 //         }
 //     }, [attendanceRecords]);
 
-//     // Get employee attendance history
 //     const getEmployeeAttendance = useCallback(async (
 //         employeeId: string,
 //         filters?: { month?: number; year?: number }
@@ -2779,7 +3017,6 @@ export default useHRData;
 //         try {
 //             const records = await api.getEmployeeAttendance(employeeId, filters);
             
-//             // Update local state with fetched records
 //             if (records && records.length > 0) {
 //                 setAttendanceRecords(prev => {
 //                     const newRecords = [...prev];
@@ -2802,79 +3039,58 @@ export default useHRData;
 //         }
 //     }, []);
 
-//     // Import attendance records (for admin)
-//     const importAttendanceRecords = useCallback(async (records: AttendanceRecord[]): Promise<void> => {
-//         try {
-//             console.log('📤 Importing attendance records...');
-//             const response = await api.importAttendance(records);
-            
-//             // Update local state
-//             setAttendanceRecords(prev => {
-//                 const byId = new Map<string, AttendanceRecord>();
-//                 prev.forEach(r => byId.set(r.id, r));
-//                 (response || []).forEach((r: AttendanceRecord) => {
-//                     byId.set(r.id, r);
-//                 });
-//                 return Array.from(byId.values());
-//             });
-            
-//             console.log('✅ Imported', response?.length, 'records');
-//         } catch (error) {
-//             console.error('❌ Error importing attendance:', error);
-//             throw error;
-//         }
-//     }, []);
-
-//     // Get only the current user's attendance records
 //     const getMyAttendance = useCallback((): AttendanceRecord[] => {
-//     // You'll need to get employeeDetails from auth - we'll handle this in the components
-//     // This function will be used with employeeId passed from component
-//     return attendanceRecords;
+//         return attendanceRecords;
 //     }, [attendanceRecords]);
 
-//     // Get only the current user's payslips
 //     const getMyPayslips = useCallback((employeeId: string): Payslip[] => {
-//     if (!employeeId) return [];
-//     return payrollHistory.filter(payslip => payslip.employeeId === employeeId);
+//         if (!employeeId) return [];
+//         return payrollHistory.filter(payslip => payslip.employeeId === employeeId);
 //     }, [payrollHistory]);
 
-//     // Get only the current user's leave requests
 //     const getMyLeaveRequests = useCallback((employeeId: string): LeaveRequest[] => {
-//     if (!employeeId) return [];
-//     return leaveRequests.filter(request => request.employeeId === employeeId);
+//         if (!employeeId) return [];
+//         return leaveRequests.filter(request => request.employeeId === employeeId);
 //     }, [leaveRequests]);
 
-//     // Get only the current user's tasks
 //     const getMyTasks = useCallback((employeeId: string): Task[] => {
-//     if (!employeeId) return [];
-//     return tasks.filter(task => task.assignedToId === employeeId);
+//         if (!employeeId) return [];
+//         return tasks.filter(task => task.assignedToId === employeeId);
 //     }, [tasks]);
 
-//     // For managers: get their team members
 //     const getMyTeamMembers = useCallback((managerId: string): Employee[] => {
-//     if (!managerId) return [];
-//     return employees.filter(emp => emp.managerId === managerId);
+//         if (!managerId) return [];
+//         return employees.filter(emp => emp.managerId === managerId);
 //     }, [employees]);
 
-//     // For managers: get their team's attendance
 //     const getTeamAttendance = useCallback((teamIds: string[]): AttendanceRecord[] => {
-//     if (!teamIds.length) return [];
-//     return attendanceRecords.filter(record => teamIds.includes(record.employeeId));
+//         if (!teamIds.length) return [];
+//         return attendanceRecords.filter(record => teamIds.includes(record.employeeId));
 //     }, [attendanceRecords]);
 
-//     // Load data on mount - DO NOT FETCH UNTIL AUTHENTICATED
+//     const generatePayroll = async (month: number, year: number): Promise<Payslip[]> => {
+//         console.log('🔄 Generating payroll for:', month, year);
+//         alert('Payroll generation is now handled in the Payroll page with Excel upload');
+//         return [];
+//     };
+
+//     const saveAppraisal = (appraisal: PerformanceAppraisal) => {
+//         console.log('Saving appraisal', appraisal);
+//     };
+
+//     // Load data on mount
 //     useEffect(() => {
 //         console.log('🎯 useHRData initialized - waiting for authentication');
-//         // Data will be loaded by components when needed
-//         // DO NOT fetch employees/roles/users here - they will 401
 //     }, []);
 
+//     // Return all data and functions
 //     return {
 //         users,
 //         roles,
 //         employees,
 //         systemSettings,
 //         attendanceRecords,
+//         serviceRequests,
 //         tasks,
 //         leaveRequests,
 //         permissionRequests,
@@ -2905,6 +3121,7 @@ export default useHRData;
 //         refreshEmployees,
 //         loadUsers,
 //         loadRoles,
+//         loadServiceRequests,
 //         addTask,
 //         updateTask,
 //         deleteTask,
@@ -2949,10 +3166,10 @@ export default useHRData;
 //     };
 // };
 
-// // Create a context to provide the HR data and functions to the rest of the app
+// // Create context
 // export const HRDataContext = createContext<HRDataContextType | undefined>(undefined);
 
-// // HRDataProvider component (ONLY ONE DEFINITION)
+// // Provider component
 // export const HRDataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 //     const hrData = useHRDataState();
     
@@ -2963,7 +3180,7 @@ export default useHRData;
 //     );
 // };
 
-// // A custom hook to easily access the HR data context
+// // Custom hook to use the context
 // export const useHRData = () => {
 //     const context = useContext(HRDataContext);
 //     if (context === undefined) {
