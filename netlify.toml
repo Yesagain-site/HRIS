@@ -4,7 +4,7 @@
   publish = "dist"
 
 [build.environment]
-  REACT_APP_API_URL = "https://your-backend-url.onrender.com"
+  REACT_APP_API_URL = "https://hris-50hb.onrender.com"
 
 [[redirects]]
   from = "/*"
