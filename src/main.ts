@@ -15,7 +15,7 @@ async function bootstrap() {
   app.use(urlencoded({ extended: true, limit: '10mb' }));
   
   // ✅ YOUR ORIGINAL URL - KEPT EXACTLY AS IS
-  const frontendUrl = process.env.FRONTEND_URL || 'https://yespeople.netlify.app';
+  const frontendUrl = process.env.FRONTEND_URL || 'https://hris-ya.vercel.app';
   app.enableCors({
     origin: [frontendUrl, 'https://yespeople.netlify.app', 'http://localhost:3000'],
     credentials: true,
