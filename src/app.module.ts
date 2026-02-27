@@ -6,6 +6,7 @@ import { AuthModule } from './auth/auth.module';
 import { EmployeesModule } from './employees/employees.module';
 import { PayrollModule } from './payroll/payroll.module';
 import { AttendanceModule } from './attendance/attendance.module';
+import { ServiceRequestsModule } from './employee-services/employee-services.module';
 import * as dotenv from 'dotenv';
 
 // Load .env manually for debugging
@@ -38,7 +39,8 @@ console.log('🔍 Direct process.env.MONGODB_URI:', process.env.MONGODB_URI ? 'F
     AuthModule,
     EmployeesModule,
     PayrollModule, 
-    AttendanceModule
+    AttendanceModule,
+    ServiceRequestsModule,
   ],
 })
 export class AppModule {}

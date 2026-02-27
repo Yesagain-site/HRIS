@@ -23,6 +23,9 @@ export class Employee extends Document {
   @Prop({ required: true })
   phone: string;
 
+  @Prop({ required: false })
+  photoUrl?: string;
+
   @Prop({ default: 'Male' })
   gender?: string;
 
