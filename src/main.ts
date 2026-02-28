@@ -15,9 +15,9 @@ async function bootstrap() {
   app.use(urlencoded({ extended: true, limit: '10mb' }));
   
   // ✅ YOUR ORIGINAL URL - KEPT EXACTLY AS IS
-  const frontendUrl = process.env.FRONTEND_URL || 'hris-ya.vercel.app';
+  const frontendUrl = process.env.FRONTEND_URL || 'https://hris-ya.vercel.app';
   app.enableCors({
-    origin: [frontendUrl, 'hris-ya.vercel.app', 'http://localhost:3000'],
+    origin: [frontendUrl, 'https://hris-ya.vercel.app', 'http://localhost:3000', 'http://localhost:5173'],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
