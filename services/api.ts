@@ -1,7 +1,7 @@
 // Base API service
 class APIService {
   // Use type assertion to tell TypeScript this exists
-  protected baseURL: string = (import.meta as any).env.VITE_API_URL || console.log("cant find the server ");
+  protected baseURL: string = (import.meta as any).env.VITE_API_URL || 'http://localhost:5000';
 
   constructor() {
     console.log('🔍 API Base URL:', this.baseURL);
