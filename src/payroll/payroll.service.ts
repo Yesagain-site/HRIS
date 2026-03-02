@@ -46,7 +46,7 @@ export class PayrollService {
         employeeId: emp._id,  // This is already an ObjectId
         sr: i + 1,
         staffId: emp.staffId,
-        name: `${emp.firstName || ''} ${emp.lastName || ''}`.trim(),
+        name: `${emp.firstName || ''} ${emp.middleName || ''} ${emp.lastName || ''}`.replace(/\s+/g, ' ').trim(),
         designation: emp.designation || '',
         department: emp.department || '',
         month: this.getMonthName(month),
@@ -54,7 +54,7 @@ export class PayrollService {
         totalDays,
         offDays,
         leaveTaken: 0,
-        workedDays: totalDays - offDays,
+        workedDays: totalDays,
         ctc: emp.baseSalary || 0,
         dailyRate: 0,
         hourlyRate: 0,
@@ -114,8 +114,8 @@ export class PayrollService {
     for (let day = 1; day <= daysInMonth; day++) {
       date.setDate(day);
       const dayOfWeek = date.getDay();
-      // Friday = 5, Saturday = 6
-      if (dayOfWeek === 5 || dayOfWeek === 6) {
+      
+      if (dayOfWeek === 0 ) {
         weekendCount++;
       }
     }

@@ -1,3 +1,4 @@
+// employees.controller.ts
 import {
   Controller,
   Post,
@@ -21,17 +22,13 @@ import { AuthGuard } from '@nestjs/passport';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
+// ✅ Import the interface
+import { ImportError } from './employees.service';
 
 @UseGuards(AuthGuard('jwt'))
 @Controller('employees')
 export class EmployeesController {
   constructor(private readonly service: EmployeesService) {}
-
-  // ========================================================================
-  // IMPORTANT: ROUTE ORDER MATTERS IN NESTJS!
-  // Specific routes (like 'bulk-import', ':id/photo') MUST come before
-  // generic routes (like ':id') to avoid route conflicts
-  // ========================================================================
 
   // ✅ 1. CREATE SINGLE EMPLOYEE
   @Post()
@@ -39,16 +36,19 @@ export class EmployeesController {
     return this.service.create(dto, req.user.userId);
   }
 
-  // ✅ 2. BULK IMPORT - MUST come BEFORE @Get(':id')
+  // ✅ 2. BULK IMPORT - with proper return type
   @Post('bulk-import')
   @HttpCode(HttpStatus.OK)
-  bulkImport(@Body() body: { records: CreateEmployeeDto[] }, @Req() req) {
+  bulkImport(@Body() body: { records: CreateEmployeeDto[] }, @Req() req): Promise<{
+    success: number;
+    failed: number;
+    errors: ImportError[];
+    created: any[];
+  }> {
     return this.service.bulkImport(body.records, req.user.userId);
   }
 
-  // ✅ 3. PHOTO UPLOAD - MUST come BEFORE @Get(':id')
-  // This route MUST be registered before @Get(':id') otherwise NestJS will
-  // match /employees/123/photo to @Get(':id') with id="123/photo"
+  // ✅ 3. PHOTO UPLOAD
   @Post(':id/photo')
   @UseInterceptors(FileInterceptor('photo', {
       storage: diskStorage({
@@ -57,7 +57,6 @@ export class EmployeesController {
               const fs = require('fs');
               const uploadPath = path.join(process.cwd(), 'uploads', 'employee-photos');
               
-              // Create directory if it doesn't exist
               if (!fs.existsSync(uploadPath)) {
                   console.log('📁 Creating upload directory:', uploadPath);
                   fs.mkdirSync(uploadPath, { recursive: true });
@@ -79,7 +78,7 @@ export class EmployeesController {
           cb(null, true);
       },
       limits: {
-          fileSize: 2 * 1024 * 1024 // 2MB
+          fileSize: 2 * 1024 * 1024
       }
   }))
   async uploadPhoto(
@@ -103,18 +102,13 @@ export class EmployeesController {
       console.log('📦 File type:', file.mimetype);
       console.log('📦 File path:', file.path);
 
-      // ✅ Construct proper backend URL
-      // Priority: BACKEND_URL env var > construct from PORT > fallback to Render URL
       let backendUrl = process.env.BACKEND_URL;
       
       if (!backendUrl) {
           const port = process.env.PORT || 10000;
-          // Check if we're on Render (Render sets RENDER env var)
           if (process.env.RENDER) {
-              // On Render, use the service URL format
               backendUrl = `https://${process.env.RENDER_EXTERNAL_HOSTNAME || 'hris-50hb.onrender.com'}`;
           } else {
-              // Local development
               backendUrl = `http://localhost:${port}`;
           }
       }
@@ -167,10 +161,10 @@ export class EmployeesController {
     return this.service.findAll();
   }
 
-  // ✅ 7. SINGLE EMPLOYEE - MUST be LAST!
-  // This MUST come after all other :id routes because it's a catch-all
+  // ✅ 7. SINGLE EMPLOYEE
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.service.findOne(id);
   }
+
 }
