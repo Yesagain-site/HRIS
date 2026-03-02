@@ -318,6 +318,13 @@ export interface Payslip {
     netSalary: number;
 }
 
+// Global cache to prevent multiple API calls
+let globalEmployees: Employee[] = [];
+let globalAttendanceRecords: AttendanceRecord[] = [];
+let isDataLoaded = false;
+let isLoading = false;
+let loadingPromise: Promise<void> | null = null;
+
 // Main Context Type
 export interface HRDataContextType {
     users: UserAccount[];
@@ -446,79 +453,70 @@ const useHRDataState = (): HRDataContextType => {
     const [publicHolidays, setPublicHolidays] = useState<PublicHoliday[]>([]);
     const [payrollHistory, setPayrollHistory] = useState<Payslip[]>([]);
     const [chatbotContext, setChatbotContext] = useState<ChatbotUsageContext[]>([]);
-    const dataLoadedRef = useRef(false);
-    const loadingDataRef = useRef(false);
+    const mountedRef = useRef(true);
 
-    // Load data functions
-    const loadData = async () => {
-        // Prevent multiple simultaneous calls
-        if (loadingDataRef.current) {
-            console.log('🔄 Data loading already in progress, skipping...');
+    // Load data function with caching
+    const loadData = useCallback(async (force = false) => {
+        // If already loaded and not forced, use cached data
+        if (isDataLoaded && !force) {
+            console.log('✅ Using cached data');
+            setEmployees(globalEmployees);
+            setAttendanceRecords(globalAttendanceRecords);
             return;
         }
-        
-        // If data already loaded, don't load again
-        if (dataLoadedRef.current) {
-            console.log('✅ Data already loaded, skipping...');
+
+        // If already loading, wait for that promise
+        if (isLoading && loadingPromise) {
+            console.log('⏳ Waiting for existing load...');
+            await loadingPromise;
+            setEmployees(globalEmployees);
+            setAttendanceRecords(globalAttendanceRecords);
             return;
         }
+
+        isLoading = true;
         
-        loadingDataRef.current = true;
-        try {
-            console.log('🔄 Loading data from API...');
-            const employeesData = await api.getEmployees();
-            console.log('✅ Employees loaded:', employeesData.length);
-            
-            // Log photoUrls for debugging
-            employeesData.forEach((emp: any) => {
-                if (emp.photoUrl) {
-                    console.log(`📸 Employee ${emp.staffId} has photoUrl:`, emp.photoUrl);
+        loadingPromise = (async () => {
+            try {
+                console.log('🔄 Loading data from API...');
+                const [employeesData, attendanceData] = await Promise.all([
+                    api.getEmployees(),
+                    api.getAllAttendance().catch(() => [])
+                ]);
+                
+                console.log('✅ Employees loaded:', employeesData.length);
+                
+                // Cache globally
+                globalEmployees = employeesData as any;
+                globalAttendanceRecords = attendanceData || [];
+                
+                if (mountedRef.current) {
+                    setEmployees(globalEmployees);
+                    setAttendanceRecords(globalAttendanceRecords);
                 }
-            });
-            
-            setEmployees(employeesData as any);
-            console.log('💾 Employees state updated');
-            
-            console.log('🔄 Loading attendance records...');
-            const attendanceData = await api.getAllAttendance();
-            setAttendanceRecords(attendanceData || []);
-            
-            // Mark as loaded
-            dataLoadedRef.current = true;
-            
-        } catch (error) {
-            console.error('❌ Error loading data:', error);
-            setEmployees([]);
-            setAttendanceRecords([]);
-            // Reset on error so we can try again
-            dataLoadedRef.current = false;
-        } finally {
-            loadingDataRef.current = false;
-        }
-    };
-    // const loadData = async () => {
-    //     try {
-    //         console.log('🔄 Loading data from API...');
-    //         const employeesData = await api.getEmployees();
-    //         console.log('✅ Employees loaded:', employeesData.length);
-    //         setEmployees(employeesData as any);
-            
-    //         console.log('🔄 Loading attendance records...');
-    //         const attendanceData = await api.getAllAttendance();
-    //         setAttendanceRecords(attendanceData || []);
-            
-    //     } catch (error) {
-    //         console.error('❌ Error loading data:', error);
-    //         setEmployees([]);
-    //         setAttendanceRecords([]);
-    //     }
-    // };
+                
+                isDataLoaded = true;
+                
+            } catch (error) {
+                console.error('❌ Error loading data:', error);
+                if (mountedRef.current) {
+                    setEmployees([]);
+                    setAttendanceRecords([]);
+                }
+                isDataLoaded = false;
+            } finally {
+                isLoading = false;
+                loadingPromise = null;
+            }
+        })();
 
-    const loadUsers = async () => {
+        await loadingPromise;
+    }, []);
+
+    const loadUsers = useCallback(async () => {
         try {
             console.log('🔄 Loading users from API...');
             const usersData = await api.getUsers();
-            console.log('✅ Users loaded:', usersData?.length || 0);
             
             const mappedUsers = (usersData || []).map((u: any) => ({
                 id: u.id || u._id,
@@ -531,18 +529,21 @@ const useHRDataState = (): HRDataContextType => {
                 lastLogin: u.lastLogin
             }));
             
-            setUsers(mappedUsers);
+            if (mountedRef.current) {
+                setUsers(mappedUsers);
+            }
         } catch (error) {
             console.error('❌ Error loading users:', error);
-            setUsers([]);
+            if (mountedRef.current) {
+                setUsers([]);
+            }
         }
-    };
+    }, []);
 
-    const loadRoles = async () => {
+    const loadRoles = useCallback(async () => {
         try {
             console.log('🔄 Loading roles from API...');
             const rolesData = await api.getRoles();
-            console.log('✅ Roles loaded:', rolesData?.length || 0);
             
             const mappedRoles = (rolesData || []).map((r: any) => ({
                 id: r.id || r._id,
@@ -551,24 +552,27 @@ const useHRDataState = (): HRDataContextType => {
                 isSystem: r.isSystem || false
             }));
             
-            setRoles(mappedRoles);
+            if (mountedRef.current) {
+                setRoles(mappedRoles);
+            }
         } catch (error) {
             console.error('❌ Error loading roles:', error);
-            setRoles([]);
+            if (mountedRef.current) {
+                setRoles([]);
+            }
         }
-    };
+    }, []);
 
     const loadServiceRequests = useCallback(async () => {
         try {
             console.log('🔄 Loading service requests from API...');
             
-            // This will return [] on 404 now
             const data = await api.getServiceRequests();
             
-            console.log('✅ Service requests loaded successfully:', data?.length || 0);
+            if (!mountedRef.current) return;
+            
             setServiceRequests(data || []);
             
-            // Update the individual request arrays
             const leaveReqs = (data || []).filter((r: any) => r.requestType === 'leave');
             const permissionReqs = (data || []).filter((r: any) => r.requestType === 'permission');
             const cashReqs = (data || []).filter((r: any) => r.requestType === 'cash');
@@ -637,20 +641,21 @@ const useHRDataState = (): HRDataContextType => {
             
         } catch (error) {
             console.error('❌ Error loading service requests:', error);
-            // Even on error, set empty arrays so loading stops
-            setServiceRequests([]);
-            setLeaveRequests([]);
-            setPermissionRequests([]);
-            setCashAdvanceRequests([]);
-            setResignationRequests([]);
+            if (mountedRef.current) {
+                setServiceRequests([]);
+                setLeaveRequests([]);
+                setPermissionRequests([]);
+                setCashAdvanceRequests([]);
+                setResignationRequests([]);
+            }
         }
-    }, []); // Empty dependency array means this function is created once
+    }, []);
 
-    const refreshEmployees = async () => {
+    const refreshEmployees = useCallback(async () => {
         console.log('🔄 Refreshing employees from API...');
-        dataLoadedRef.current = false; // Reset so it loads again
-        await loadData();
-    };
+        isDataLoaded = false; // Reset cache
+        await loadData(true); // Force reload
+    }, [loadData]);
 
     // Employee functions
     const validateUser = (username: string): UserAccount | null => {
@@ -714,10 +719,7 @@ const useHRDataState = (): HRDataContextType => {
                 status: employee.workStatus || 'Active'
             };
 
-            console.log('📤 Sending to API:', JSON.stringify(employeeData, null, 2));
-            
             const response = await api.createEmployee(employeeData);
-            console.log('✅ API Response:', response);
             
             const newEmployee: Employee = {
                 ...employee,
@@ -729,7 +731,12 @@ const useHRDataState = (): HRDataContextType => {
                 }]
             };
 
+            // Update local state immediately
             setEmployees(prev => [...prev, newEmployee]);
+            
+            // Update global cache
+            globalEmployees = [...globalEmployees, newEmployee];
+            
             console.log('✅ Employee created via API with ID:', newEmployee.id);
             return newEmployee.id;
             
@@ -742,7 +749,6 @@ const useHRDataState = (): HRDataContextType => {
     const updateEmployee = async (id: string, employee: Partial<Employee>) => {
         try {
             console.log('Updating employee via NestJS API...', id);
-            console.log('📝 Update payload photoUrl:', employee.photoUrl);
             
             const updateData: any = {
                 ...employee,
@@ -755,8 +761,6 @@ const useHRDataState = (): HRDataContextType => {
             }
 
             const response = await api.updateEmployee(id, updateData);
-            console.log('✅ Update API response:', response);
-            console.log('📸 Response photoUrl:', response?.photoUrl);
 
             const auditEntry = {
                 date: new Date().toISOString(),
@@ -764,21 +768,25 @@ const useHRDataState = (): HRDataContextType => {
                 performedBy: 'system',
             };
 
+            // Update local state immediately
             setEmployees(prev => {
                 const updated = prev.map(e =>
                     e.id === id ? { 
                         ...e, 
                         ...employee,
-                        photoUrl: response?.photoUrl || employee.photoUrl, // Ensure photoUrl from response is used
+                        photoUrl: response?.photoUrl || employee.photoUrl,
                         auditTrail: [...(e.auditTrail || []), auditEntry]
                     } : e
                 );
-                console.log('💾 Local employees state updated');
+                
+                // Update global cache
+                globalEmployees = updated;
+                
                 return updated;
             });
 
             console.log('✅ Employee updated via API:', id);
-            return response; // Return the response so caller can use it
+            return response;
         } catch (error) {
             console.error('❌ Error updating employee via API:', error);
             throw error;
@@ -789,7 +797,15 @@ const useHRDataState = (): HRDataContextType => {
         try {
             console.log('Deleting employee via NestJS API...', id);
             await api.deleteEmployee(id);
-            setEmployees(prev => prev.filter(e => e.id !== id));
+            
+            // Update local state immediately
+            setEmployees(prev => {
+                const updated = prev.filter(e => e.id !== id);
+                // Update global cache
+                globalEmployees = updated;
+                return updated;
+            });
+            
             console.log('✅ Employee deleted via API:', id);
         } catch (error) {
             console.error('❌ Error deleting employee via API:', error);
@@ -798,8 +814,8 @@ const useHRDataState = (): HRDataContextType => {
     };
 
     const updateEmployeeSalary = (employeeId: string, salaryRecord: SalaryRecord) => {
-        setEmployees(prev =>
-            prev.map(emp => {
+        setEmployees(prev => {
+            const updated = prev.map(emp => {
                 if (emp.id !== employeeId) return emp;
                 const existingIndex = emp.salaryHistory.findIndex(s => s.id === salaryRecord.id);
                 let updatedHistory: SalaryRecord[];
@@ -815,8 +831,11 @@ const useHRDataState = (): HRDataContextType => {
                     salaryHistory: updatedHistory,
                     currentSalaryId: salaryRecord.id,
                 };
-            })
-        );
+            });
+            // Update global cache
+            globalEmployees = updated;
+            return updated;
+        });
     };
 
     const getSalaryForPeriod = useCallback(
@@ -880,7 +899,6 @@ const useHRDataState = (): HRDataContextType => {
             
             if (account.password) {
                 updateData.password = account.password;
-                console.log('🔑 Including new password in update');
             }
             
             const response = await api.updateUser(id, updateData);
@@ -1256,7 +1274,10 @@ const useHRDataState = (): HRDataContextType => {
                 (response || []).forEach((r: AttendanceRecord) => {
                     byId.set(r.id, r);
                 });
-                return Array.from(byId.values());
+                const updated = Array.from(byId.values());
+                // Update global cache
+                globalAttendanceRecords = updated;
+                return updated;
             });
             
             console.log('✅ Imported', response?.length, 'records');
@@ -1289,13 +1310,16 @@ const useHRDataState = (): HRDataContextType => {
             if (response) {
                 setAttendanceRecords(prev => {
                     const existingIndex = prev.findIndex(r => r.employeeId === employeeId && r.date === dateStr);
+                    let updated;
                     if (existingIndex >= 0) {
-                        const updated = [...prev];
+                        updated = [...prev];
                         updated[existingIndex] = { ...updated[existingIndex], ...response };
-                        return updated;
                     } else {
-                        return [response, ...prev];
+                        updated = [response, ...prev];
                     }
+                    // Update global cache
+                    globalAttendanceRecords = updated;
+                    return updated;
                 });
             }
 
@@ -1365,6 +1389,8 @@ const useHRDataState = (): HRDataContextType => {
                     if (existingIndex >= 0) {
                         const updated = [...prev];
                         updated[existingIndex] = { ...updated[existingIndex], ...response };
+                        // Update global cache
+                        globalAttendanceRecords = updated;
                         return updated;
                     }
                     return prev;
@@ -1439,6 +1465,8 @@ const useHRDataState = (): HRDataContextType => {
                             newRecords.push(record);
                         }
                     });
+                    // Update global cache
+                    globalAttendanceRecords = newRecords;
                     return newRecords;
                 });
             }
@@ -1491,8 +1519,14 @@ const useHRDataState = (): HRDataContextType => {
 
     // Load data on mount
     useEffect(() => {
-        console.log('🎯 useHRData initialized - waiting for authentication');
-    }, []);
+        mountedRef.current = true;
+        console.log('🎯 useHRData initialized - loading data');
+        loadData();
+        
+        return () => {
+            mountedRef.current = false;
+        };
+    }, [loadData]);
 
     // Return all data and functions
     return {
@@ -1601,7 +1635,6 @@ export const useHRData = () => {
 };
 
 export default useHRData;
-
 
 // // hooks/useHRData.tsx - Complete HR Data Hook with Service Requests Integration
 // import React, {
@@ -2073,7 +2106,16 @@ export default useHRData;
 //             console.log('🔄 Loading data from API...');
 //             const employeesData = await api.getEmployees();
 //             console.log('✅ Employees loaded:', employeesData.length);
+            
+//             // Log photoUrls for debugging
+//             employeesData.forEach((emp: any) => {
+//                 if (emp.photoUrl) {
+//                     console.log(`📸 Employee ${emp.staffId} has photoUrl:`, emp.photoUrl);
+//                 }
+//             });
+            
 //             setEmployees(employeesData as any);
+//             console.log('💾 Employees state updated');
             
 //             console.log('🔄 Loading attendance records...');
 //             const attendanceData = await api.getAllAttendance();
@@ -2338,6 +2380,7 @@ export default useHRData;
 //     const updateEmployee = async (id: string, employee: Partial<Employee>) => {
 //         try {
 //             console.log('Updating employee via NestJS API...', id);
+//             console.log('📝 Update payload photoUrl:', employee.photoUrl);
             
 //             const updateData: any = {
 //                 ...employee,
@@ -2349,7 +2392,9 @@ export default useHRData;
 //                 updateData.dob = employee.dob;
 //             }
 
-//             await api.updateEmployee(id, updateData);
+//             const response = await api.updateEmployee(id, updateData);
+//             console.log('✅ Update API response:', response);
+//             console.log('📸 Response photoUrl:', response?.photoUrl);
 
 //             const auditEntry = {
 //                 date: new Date().toISOString(),
@@ -2357,17 +2402,21 @@ export default useHRData;
 //                 performedBy: 'system',
 //             };
 
-//             setEmployees(prev =>
-//                 prev.map(e =>
+//             setEmployees(prev => {
+//                 const updated = prev.map(e =>
 //                     e.id === id ? { 
 //                         ...e, 
 //                         ...employee,
+//                         photoUrl: response?.photoUrl || employee.photoUrl, // Ensure photoUrl from response is used
 //                         auditTrail: [...(e.auditTrail || []), auditEntry]
 //                     } : e
-//                 )
-//             );
+//                 );
+//                 console.log('💾 Local employees state updated');
+//                 return updated;
+//             });
 
 //             console.log('✅ Employee updated via API:', id);
+//             return response; // Return the response so caller can use it
 //         } catch (error) {
 //             console.error('❌ Error updating employee via API:', error);
 //             throw error;
