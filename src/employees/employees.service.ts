@@ -86,165 +86,37 @@ export class EmployeesService {
       const record = records[i];
 
       try {
-        const rawData = {
+        // Create employee without any validation
+        const employeeData = {
           ...record,
           createdBy: userId,
           createdAt: new Date(),
         };
 
-        const inserted = await this.employeeModel.collection.insertOne(rawData);
-
+        // Insert directly using collection to bypass all Mongoose validation
+        const inserted = await this.employeeModel.collection.insertOne(employeeData);
+        
+        // Fetch the saved document
         const savedDoc = await this.employeeModel.findById(inserted.insertedId);
-
+        
         if (savedDoc) {
-          results.created.push(savedDoc);
+          const result = savedDoc.toObject() as any;
+          results.created.push({ ...result, id: result._id.toString() });
         }
-
+        
         results.success++;
-
       } catch (error: any) {
         results.failed++;
         results.errors.push({
           row: i + 2,
           staffId: record.staffId || '—',
-          reason: error.message,
+          reason: error?.message || 'Unknown error',
         });
       }
     }
 
     return results;
   }
-  // async bulkImport(
-  //   records: CreateEmployeeDto[],
-  //   userId: string,
-  // ): Promise<{
-  //   success: number;
-  //   failed: number;
-  //   errors: ImportError[];
-  //   created: any[];
-  // }> {
-  //   const results = {
-  //     success: 0,
-  //     failed: 0,
-  //     errors: [] as ImportError[],
-  //     created: [] as any[],
-  //   };
-
-  //   for (let i = 0; i < records.length; i++) {
-  //     const record = records[i];
-  //     const rowNum = i + 2;
-
-  //     try {
-  //       // ✅ AUTO FIX STAFF ID
-  //       let staffId = record.staffId || `EMP-${Date.now()}-${i}`;
-
-  //       const existingStaff = await this.employeeModel.findOne({ staffId });
-  //       if (existingStaff) {
-  //         staffId = `${staffId}-${Date.now()}`;
-  //       }
-
-  //       // ✅ AUTO FIX EMAIL
-  //       let email = record.email;
-  //       if (!email) {
-  //         email = `${staffId.replace(/[^a-zA-Z0-9]/g, '')}@company.com`;
-  //       }
-
-  //       const emailExists = await this.employeeModel.findOne({ email });
-  //       if (emailExists) {
-  //         email = `${staffId}-${Date.now()}@company.com`;
-  //       }
-
-  //       // ✅ FULL NAME SPLIT LOGIC (IMPORTANT FIX)
-  //       let firstName = record.firstName || '';
-  //       let middleName = record.middleName || '';
-  //       let lastName = record.lastName || '';
-
-  //       // If Excel sent full name in firstName column
-  //       if (firstName && !lastName && firstName.includes(' ')) {
-  //         const parts = firstName.trim().split(/\s+/);
-
-  //         firstName = parts[0] || '';
-  //         lastName = parts.length > 1 ? parts[parts.length - 1] : '';
-  //         middleName =
-  //           parts.length > 2 ? parts.slice(1, -1).join(' ') : '';
-  //       }
-
-  //       if (!firstName) firstName = 'Employee';
-
-  //       // ✅ BUILD EMPLOYEE DATA
-  //       const employeeData: any = {
-  //         staffId,
-  //         firstName,
-  //         middleName,
-  //         lastName,
-  //         email,
-  //         phone: record.phone || '',
-  //         gender: record.gender || '',
-  //         dob: record.dob || '',
-  //         nationality: record.nationality || '',
-  //         maritalStatus: record.maritalStatus || '',
-  //         address: record.address || '',
-  //         workStatus: record.workStatus || 'Active',
-  //         joiningDate:
-  //           record.joiningDate ||
-  //           new Date().toISOString().split('T')[0],
-  //         designation: record.designation || '',
-  //         department: record.department || '',
-  //         reportingManagerId: record.reportingManagerId || '',
-  //         remarks: record.remarks || '',
-  //         previousSalary: record.previousSalary || 0,
-  //         baseSalary: record.baseSalary || 0,
-  //         presentGrossSalary:
-  //           record.presentGrossSalary || record.baseSalary || 0,
-  //         allowances: record.allowances || [],
-  //         payrollCode: record.payrollCode || '',
-  //         payFrequency: record.payFrequency || 'Monthly',
-  //         targetRate: record.targetRate || 0,
-  //         bankName: record.bankName || '',
-  //         iban: record.iban || '',
-  //         isTaxable: record.isTaxable === true,
-  //         isOvertimeEligible:
-  //           record.isOvertimeEligible === true,
-  //         passportNo: record.passportNo || '',
-  //         passportExp: record.passportExp || '',
-  //         visaStatus: record.visaStatus || '',
-  //         visaStartDate: record.visaStartDate || '',
-  //         visaExpDate: record.visaExpDate || '',
-  //         eidNumber: record.eidNumber || '',
-  //         eidIssueDate: record.eidIssueDate || '',
-  //         eidExpDate: record.eidExpDate || '',
-  //         documents: record.documents || [],
-  //         emergencyContact: record.emergencyContact || {},
-  //         leaveBalances:
-  //           record.leaveBalances || {
-  //             Annual: { total: 24, taken: 0 },
-  //             Sick: { total: 10, taken: 0 },
-  //           },
-  //         customFieldValues: record.customFieldValues || {},
-  //         createdBy: userId,
-  //         createdAt: new Date(),
-  //       };
-
-  //       // ✅ INSERT WITHOUT VALIDATION
-  //       const saved = await this.employeeModel.collection.insertOne(employeeData);
-  //       const savedDoc = await this.employeeModel.findById(saved.insertedId);
-
-  //       const result = savedDoc?.toObject() as any;
-  //       results.created.push({ ...result, id: result._id.toString() });
-
-  //       results.success++;
-  //     } catch (error: any) {
-  //       results.failed++;
-  //       results.errors.push({
-  //         row: rowNum,
-  //         staffId: record.staffId || '—',
-  //         reason: error?.message || 'Unknown error',
-  //       });
-  //     }
-  //   }
-
-  //   return results;
-  // }
 
   async updatePhoto(id: string, photoUrl: string, userId: string) {
     const employee = await this.employeeModel.findByIdAndUpdate(

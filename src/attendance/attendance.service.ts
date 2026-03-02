@@ -9,6 +9,8 @@ import { Model, Types } from 'mongoose';
 import { Attendance } from './schemas/attendance.schema';
 import { CreateAttendanceDto } from './dto/create-attendance.dto';
 import { UpdateAttendanceDto } from './dto/update-attendance.dto';
+import { BulkMonthlyAttendanceDto } from './dto/bulk-monthly-attendance.dto';
+import { Employee } from '../employees/schemas/employee.schema';
 
 // ─── Company Shift Configuration ─────────────────────────────────────────────
 const SHIFT_START_HOUR = 8; // 08:00 AM
@@ -104,6 +106,7 @@ function evaluateClockOut(
 export class AttendanceService {
   constructor(
     @InjectModel(Attendance.name) private attendanceModel: Model<Attendance>,
+    @InjectModel(Employee.name) private employeeModel: Model<Employee>,
   ) {}
 
   /**
@@ -150,6 +153,7 @@ export class AttendanceService {
       lateMinutes: lateInfo.lateMinutes,
       lateHours: lateInfo.lateHours,
       status: lateInfo.status,
+      recordType: 'daily',
       // Defaults for out-fields (will be set on clock-out)
       workHours: 0,
       overtimeHours: 0,
@@ -297,7 +301,7 @@ export class AttendanceService {
   }
 
   /**
-   * Bulk import attendance records
+   * Bulk import attendance records (DAILY RECORDS)
    * Used for importing from biometric systems or Excel files
    */
   async importAttendance(
@@ -357,6 +361,7 @@ export class AttendanceService {
         ...r,
         employeeId: new Types.ObjectId(r.employeeId),
         createdBy: new Types.ObjectId(userId),
+        recordType: 'daily',
         isLate: lateInfo.isLate,
         lateMinutes: lateInfo.lateMinutes,
         lateHours: lateInfo.lateHours,
@@ -448,12 +453,42 @@ export class AttendanceService {
     totalWorkHours: number;
     totalOvertimeHours: number;
     totalLateMinutes: number;
+    totalLateHours: number;
     averageWorkHours: number;
+    hasMonthlySummary: boolean;
   }> {
     if (!Types.ObjectId.isValid(employeeId)) {
       throw new BadRequestException('Invalid employee ID');
     }
 
+    // Check if monthly summary exists
+    if (filters?.month && filters?.year) {
+      const monthlySummary = await this.attendanceModel.findOne({
+        employeeId: new Types.ObjectId(employeeId),
+        recordType: 'monthly_summary',
+        month: filters.month,
+        year: filters.year,
+      });
+
+      if (monthlySummary) {
+        // Return stats from monthly summary
+        return {
+          totalDays: 0,
+          presentDays: 0,
+          lateDays: 0,
+          absentDays: monthlySummary.absences || 0,
+          leaveDays: 0,
+          totalWorkHours: 0,
+          totalOvertimeHours: monthlySummary.overtimeHours || 0,
+          totalLateMinutes: 0,
+          totalLateHours: monthlySummary.lateHours || 0,
+          averageWorkHours: 0,
+          hasMonthlySummary: true,
+        };
+      }
+    }
+
+    // Fallback to daily records
     const records = await this.getEmployeeAttendance(employeeId, filters);
 
     const stats = {
@@ -471,7 +506,9 @@ export class AttendanceService {
         (sum, r) => sum + (r.lateMinutes || 0),
         0,
       ),
+      totalLateHours: records.reduce((sum, r) => sum + (r.lateHours || 0), 0),
       averageWorkHours: 0,
+      hasMonthlySummary: false,
     };
 
     stats.averageWorkHours =
@@ -481,8 +518,228 @@ export class AttendanceService {
 
     return stats;
   }
-}
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ═══ BULK MONTHLY ATTENDANCE METHODS ═══════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Import bulk monthly attendance summaries from Excel
+   * This creates monthly summary records that will be used by payroll
+   */
+  async importBulkMonthlyAttendance(
+    records: BulkMonthlyAttendanceDto[],
+    userId: string,
+  ): Promise<{
+    success: number;
+    failed: number;
+    errors: Array<{ row: number; staffId: string; error: string }>;
+  }> {
+    const results = {
+      success: 0,
+      failed: 0,
+      errors: [] as Array<{ row: number; staffId: string; error: string }>,
+    };
+
+    // Get current year if not provided
+    const currentYear = new Date().getFullYear();
+
+    for (let i = 0; i < records.length; i++) {
+      const record = records[i];
+      const rowNumber = i + 1;
+
+      try {
+        // Find employee by staffId
+        const employee = await this.employeeModel.findOne({
+          staffId: record.staffId,
+        });
+
+        if (!employee) {
+          results.failed++;
+          results.errors.push({
+            row: rowNumber,
+            staffId: record.staffId,
+            error: `Employee not found with staff ID: ${record.staffId}`,
+          });
+          continue;
+        }
+
+        // Use provided year or default to current year
+        const year = record.year || currentYear;
+
+        // Create date string as YYYY-MM for monthly summaries
+        const dateString = `${year}-${String(record.month).padStart(2, '0')}`;
+
+        // Check if monthly summary already exists
+        const existing = await this.attendanceModel.findOne({
+          employeeId: employee._id,
+          recordType: 'monthly_summary',
+          month: record.month,
+          year: year,
+        });
+
+        if (existing) {
+          // Update existing record
+          existing.absences = record.absences;
+          existing.lateHours = record.lateHours;
+          existing.overtimeHours = record.overtimeHours;
+          existing.employeeName = record.name;
+          await existing.save();
+        } else {
+          // Create new monthly summary record
+          const monthlySummary = new this.attendanceModel({
+            employeeId: employee._id,
+            staffId: record.staffId,
+            employeeName: record.name,
+            date: dateString,
+            recordType: 'monthly_summary',
+            month: record.month,
+            year: year,
+            absences: record.absences,
+            lateHours: record.lateHours,
+            overtimeHours: record.overtimeHours,
+            createdBy: new Types.ObjectId(userId),
+            // Set defaults for unused fields in monthly summaries
+            workHours: 0,
+            status: 'Summary',
+          });
+
+          await monthlySummary.save();
+        }
+
+        results.success++;
+      } catch (error) {
+        results.failed++;
+        results.errors.push({
+          row: rowNumber,
+          staffId: record.staffId,
+          error: error.message || 'Unknown error',
+        });
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Get monthly attendance summary for an employee
+   * Used by payroll to fetch monthly data
+   */
+  async getMonthlyAttendanceSummary(
+    employeeId: string,
+    month: number,
+    year: number,
+  ): Promise<{
+    absences: number;
+    lateHours: number;
+    overtimeHours: number;
+    hasMonthlySummary: boolean;
+  }> {
+    // Validate employeeId
+    if (!Types.ObjectId.isValid(employeeId)) {
+      throw new BadRequestException('Invalid employee ID');
+    }
+
+    // Try to find monthly summary first
+    const monthlySummary = await this.attendanceModel.findOne({
+      employeeId: new Types.ObjectId(employeeId),
+      recordType: 'monthly_summary',
+      month,
+      year,
+    });
+
+    if (monthlySummary) {
+      return {
+        absences: monthlySummary.absences || 0,
+        lateHours: monthlySummary.lateHours || 0,
+        overtimeHours: monthlySummary.overtimeHours || 0,
+        hasMonthlySummary: true,
+      };
+    }
+
+    // If no monthly summary, aggregate from daily records
+    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+    const lastDay = new Date(year, month, 0).getDate();
+    const endDate = `${year}-${String(month).padStart(2, '0')}-${lastDay}`;
+
+    const dailyRecords = await this.attendanceModel.find({
+      employeeId: new Types.ObjectId(employeeId),
+      recordType: { $ne: 'monthly_summary' }, // Exclude monthly summaries
+      date: { $gte: startDate, $lte: endDate },
+    });
+
+    // Calculate from daily records
+    let totalLateHours = 0;
+    let totalOvertimeHours = 0;
+    let absences = 0;
+
+    for (const record of dailyRecords) {
+      totalLateHours += record.lateHours || 0;
+      totalOvertimeHours += record.overtimeHours || 0;
+      if (record.status === 'Absent') {
+        absences++;
+      }
+    }
+
+    return {
+      absences,
+      lateHours: parseFloat(totalLateHours.toFixed(2)),
+      overtimeHours: parseFloat(totalOvertimeHours.toFixed(2)),
+      hasMonthlySummary: false,
+    };
+  }
+
+  /**
+   * Get all monthly summaries for a specific month/year
+   * Used by payroll to bulk-fetch data for all employees
+   */
+  async getAllMonthlyAttendanceSummaries(
+    month: number,
+    year: number,
+  ): Promise<
+    Array<{
+      employeeId: string;
+      staffId: string;
+      name: string;
+      absences: number;
+      lateHours: number;
+      overtimeHours: number;
+    }>
+  > {
+    const summaries = await this.attendanceModel
+      .find({
+        recordType: 'monthly_summary',
+        month,
+        year,
+      })
+      .populate('employeeId', 'staffId firstName lastName');
+
+    return summaries.map((summary) => ({
+      employeeId: summary.employeeId.toString(),
+      staffId: summary.staffId,
+      name: summary.employeeName,
+      absences: summary.absences || 0,
+      lateHours: summary.lateHours || 0,
+      overtimeHours: summary.overtimeHours || 0,
+    }));
+  }
+
+  /**
+   * Delete monthly summary for an employee
+   */
+  async deleteMonthlyAttendanceSummary(
+    employeeId: string,
+    month: number,
+    year: number,
+  ): Promise<void> {
+    await this.attendanceModel.deleteOne({
+      employeeId: new Types.ObjectId(employeeId),
+      recordType: 'monthly_summary',
+      month,
+      year,
+    });
+  }
+}
 // import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 // import { InjectModel } from '@nestjs/mongoose';
 // import { Model, Types } from 'mongoose';

@@ -1,358 +1,235 @@
-// dto/create-employee.dto.ts - COMPLETE FIX
-import { 
-  IsString, 
-  IsOptional, 
-  IsNumber, 
-  IsBoolean, 
-  IsEmail, 
-  IsDateString,
-  ValidateNested,
-  IsArray
-} from 'class-validator';
-import { Transform, Type } from 'class-transformer';
-
+// dto/create-employee.dto.ts - NO VALIDATION VERSION
 export class CreateEmployeeDto {
-  @IsString()
-  @IsOptional()
   staffId?: string;
-
-  @IsString()
-  @IsOptional()
   firstName?: string;
-
-  @IsString()
-  @IsOptional()
   middleName?: string;
-
-  @IsString()
-  @IsOptional()
   lastName?: string;
-
-  @IsEmail()
-  @IsOptional()
-  @Transform(({ value }) => value || undefined)
   email?: string;
-
-  @IsString()
-  @IsOptional()
   phone?: string;
-
-  @IsString()
-  @IsOptional()
   gender?: string;
-
-  @IsDateString()
-  @IsOptional()
   dob?: string;
-
-  @IsString()
-  @IsOptional()
   nationality?: string;
-
-  @IsString()
-  @IsOptional()
   maritalStatus?: string;
-
-  @IsString()
-  @IsOptional()
   address?: string;
-
-  @IsString()
-  @IsOptional()
   workStatus?: string;
-
-  @IsDateString()
-  @IsOptional()
   joiningDate?: string;
-
-  @IsString()
-  @IsOptional()
   designation?: string;
-
-  @IsString()
-  @IsOptional()
   department?: string;
-
-  @IsString()
-  @IsOptional()
   reportingManagerId?: string;
-
-  @IsString()
-  @IsOptional()
   remarks?: string;
-
-  @IsNumber()
-  @IsOptional()
-  @Transform(({ value }) => value ? Number(value) : 0)
   previousSalary?: number;
-
-  @IsNumber()
-  @IsOptional()
-  @Transform(({ value }) => value ? Number(value) : 0)
   baseSalary?: number;
-
-  @IsNumber()
-  @IsOptional()
-  @Transform(({ value }) => value ? Number(value) : 0)
   presentGrossSalary?: number;
-
-  @IsArray()
-  @IsOptional()
-  @Type(() => Object)
   allowances?: any[];
-
-  @IsString()
-  @IsOptional()
   payrollCode?: string;
-
-  @IsString()
-  @IsOptional()
   payFrequency?: string;
-
-  @IsNumber()
-  @IsOptional()
-  @Transform(({ value }) => value ? Number(value) : 0)
   targetRate?: number;
-
-  @IsString()
-  @IsOptional()
   bankName?: string;
-
-  @IsString()
-  @IsOptional()
   iban?: string;
-
-  @IsBoolean()
-  @IsOptional()
-  @Transform(({ value }) => {
-    if (value === true || value === false) return value;
-    if (value === 'true' || value === 'yes' || value === '1') return true;
-    return false;
-  })
   isTaxable?: boolean;
-
-  @IsBoolean()
-  @IsOptional()
-  @Transform(({ value }) => {
-    if (value === true || value === false) return value;
-    if (value === 'true' || value === 'yes' || value === '1') return true;
-    return false;
-  })
   isOvertimeEligible?: boolean;
-
-  @IsString()
-  @IsOptional()
   passportNo?: string;
-
-  @IsDateString()
-  @IsOptional()
   passportExp?: string;
-
-  @IsString()
-  @IsOptional()
   visaStatus?: string;
-
-  @IsDateString()
-  @IsOptional()
   visaStartDate?: string;
-
-  @IsDateString()
-  @IsOptional()
   visaExpDate?: string;
-
-  @IsString()
-  @IsOptional()
   eidNumber?: string;
-
-  @IsDateString()
-  @IsOptional()
   eidIssueDate?: string;
-
-  @IsDateString()
-  @IsOptional()
   eidExpDate?: string;
-
-  @IsArray()
-  @IsOptional()
-  @Type(() => Object)
   documents?: any[];
-
-  @IsOptional()
-  @Type(() => Object)
   emergencyContact?: any;
-
-  @IsOptional()
-  @Type(() => Object)
   leaveBalances?: any;
-
-  @IsOptional()
-  @Type(() => Object)
   customFieldValues?: any;
 }
 
-// import { IsNotEmpty, IsOptional, IsString, IsNumber, IsEmail, IsDateString, IsArray, IsObject, IsBoolean } from 'class-validator';
+// // dto/create-employee.dto.ts - COMPLETE FIX
+// import { 
+//   IsString, 
+//   IsOptional, 
+//   IsNumber, 
+//   IsBoolean, 
+//   IsEmail, 
+//   IsDateString,
+//   ValidateNested,
+//   IsArray
+// } from 'class-validator';
+// import { Transform, Type } from 'class-transformer';
 
 // export class CreateEmployeeDto {
-//   @IsNotEmpty()
 //   @IsString()
-//   staffId: string;
-
-//   @IsNotEmpty()
-//   @IsString()
-//   firstName: string;
-
 //   @IsOptional()
+//   staffId?: string;
+
 //   @IsString()
+//   @IsOptional()
+//   firstName?: string;
+
+//   @IsString()
+//   @IsOptional()
 //   middleName?: string;
 
-//   @IsNotEmpty()
 //   @IsString()
-//   lastName: string;
-
-//   @IsNotEmpty()
-//   @IsEmail()
-//   email: string;
-
-//   @IsNotEmpty()
-//   @IsString()
-//   phone: string;
-
 //   @IsOptional()
+//   lastName?: string;
+
+//   @IsEmail()
+//   @IsOptional()
+//   @Transform(({ value }) => value || undefined)
+//   email?: string;
+
 //   @IsString()
+//   @IsOptional()
+//   phone?: string;
+
+//   @IsString()
+//   @IsOptional()
 //   gender?: string;
 
-//   @IsOptional()
 //   @IsDateString()
+//   @IsOptional()
 //   dob?: string;
 
-//   @IsOptional()
 //   @IsString()
+//   @IsOptional()
 //   nationality?: string;
 
-//   @IsOptional()
 //   @IsString()
+//   @IsOptional()
 //   maritalStatus?: string;
 
-//   @IsOptional()
 //   @IsString()
+//   @IsOptional()
 //   address?: string;
 
-//   @IsNotEmpty()
 //   @IsString()
-//   workStatus: string;
-
-//   @IsNotEmpty()
-//   @IsDateString()
-//   joiningDate: string;
-
-//   @IsNotEmpty()
-//   @IsString()
-//   designation: string;
-
-//   @IsNotEmpty()
-//   @IsString()
-//   department: string;
-
 //   @IsOptional()
+//   workStatus?: string;
+
+//   @IsDateString()
+//   @IsOptional()
+//   joiningDate?: string;
+
 //   @IsString()
+//   @IsOptional()
+//   designation?: string;
+
+//   @IsString()
+//   @IsOptional()
+//   department?: string;
+
+//   @IsString()
+//   @IsOptional()
 //   reportingManagerId?: string;
 
-//   @IsOptional()
 //   @IsString()
+//   @IsOptional()
 //   remarks?: string;
-//  @IsOptional()
+
 //   @IsNumber()
+//   @IsOptional()
+//   @Transform(({ value }) => value ? Number(value) : 0)
 //   previousSalary?: number;
 
-//   @IsNotEmpty()
 //   @IsNumber()
-//   baseSalary: number;
-
-//   @IsNotEmpty()
-//   @IsNumber()
-//   presentGrossSalary: number;
-
 //   @IsOptional()
+//   @Transform(({ value }) => value ? Number(value) : 0)
+//   baseSalary?: number;
+
+//   @IsNumber()
+//   @IsOptional()
+//   @Transform(({ value }) => value ? Number(value) : 0)
+//   presentGrossSalary?: number;
+
 //   @IsArray()
+//   @IsOptional()
+//   @Type(() => Object)
 //   allowances?: any[];
 
-//   @IsOptional()
 //   @IsString()
+//   @IsOptional()
 //   payrollCode?: string;
 
-//   @IsOptional()
 //   @IsString()
+//   @IsOptional()
 //   payFrequency?: string;
 
-//   @IsOptional()
 //   @IsNumber()
+//   @IsOptional()
+//   @Transform(({ value }) => value ? Number(value) : 0)
 //   targetRate?: number;
 
-//   @IsOptional()
 //   @IsString()
+//   @IsOptional()
 //   bankName?: string;
 
-//   @IsOptional()
 //   @IsString()
+//   @IsOptional()
 //   iban?: string;
 
-//   @IsOptional()
 //   @IsBoolean()
+//   @IsOptional()
+//   @Transform(({ value }) => {
+//     if (value === true || value === false) return value;
+//     if (value === 'true' || value === 'yes' || value === '1') return true;
+//     return false;
+//   })
 //   isTaxable?: boolean;
 
-//   @IsOptional()
 //   @IsBoolean()
+//   @IsOptional()
+//   @Transform(({ value }) => {
+//     if (value === true || value === false) return value;
+//     if (value === 'true' || value === 'yes' || value === '1') return true;
+//     return false;
+//   })
 //   isOvertimeEligible?: boolean;
 
-//   @IsOptional()
 //   @IsString()
+//   @IsOptional()
 //   passportNo?: string;
 
-//   @IsOptional()
 //   @IsDateString()
+//   @IsOptional()
 //   passportExp?: string;
 
-//   @IsOptional()
 //   @IsString()
+//   @IsOptional()
 //   visaStatus?: string;
 
-//   @IsOptional()
 //   @IsDateString()
+//   @IsOptional()
 //   visaStartDate?: string;
 
-//   @IsOptional()
 //   @IsDateString()
+//   @IsOptional()
 //   visaExpDate?: string;
 
-//   @IsOptional()
 //   @IsString()
+//   @IsOptional()
 //   eidNumber?: string;
 
-//   @IsOptional()
 //   @IsDateString()
+//   @IsOptional()
 //   eidIssueDate?: string;
 
-//   @IsOptional()
 //   @IsDateString()
+//   @IsOptional()
 //   eidExpDate?: string;
 
-//   @IsOptional()
 //   @IsArray()
+//   @IsOptional()
+//   @Type(() => Object)
 //   documents?: any[];
 
 //   @IsOptional()
-//   @IsObject()
+//   @Type(() => Object)
 //   emergencyContact?: any;
 
 //   @IsOptional()
-//   @IsArray()
-//   leaveBalances?: any[];
+//   @Type(() => Object)
+//   leaveBalances?: any;
 
 //   @IsOptional()
-//   @IsObject()
-//   customFieldValues?: Record<string, any>;
-
-//   @IsOptional()
-//   @IsString()
-//   createdBy?: string;
+//   @Type(() => Object)
+//   customFieldValues?: any;
 // }

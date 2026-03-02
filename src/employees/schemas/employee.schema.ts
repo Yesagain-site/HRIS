@@ -1,291 +1,291 @@
-// schemas/employee.schema.ts - CORRECTED VERSION
+// schemas/employee.schema.ts - COMPLETELY OPTIONAL VERSION
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
 
 @Schema({ 
   timestamps: true, 
-  strict: false,
-  validateBeforeSave: false,
-  autoIndex: true,
+  strict: false,  // Allow fields not defined in schema
+  validateBeforeSave: false,  // Skip validation
   collection: 'employees',
   versionKey: false
-  // ❌ Removed skipVersioning - this was causing the error
 })
 export class Employee extends Document {
-  // Make ALL fields optional - use ? for all
-  @Prop({ unique: true, sparse: true, required: false })
+  // Make ALL fields optional with no validation
+  @Prop({ sparse: true })
   staffId?: string;
 
-  @Prop({ required: false })
+  @Prop()
   firstName?: string;
 
-  @Prop({ required: false })
+  @Prop()
   middleName?: string;
 
-  @Prop({ required: false })
+  @Prop()
   lastName?: string;
 
-  @Prop({ required: false, unique: false })
+  @Prop()
   email?: string;
 
-  @Prop({ required: false })
+  @Prop()
   phone?: string;
 
-  @Prop({ required: false })
+  @Prop()
   photoUrl?: string;
 
-  @Prop({ required: false })
+  @Prop()
   gender?: string;
 
-  @Prop({ required: false })
+  @Prop()
   dob?: string;
 
-  @Prop({ required: false })
+  @Prop()
   nationality?: string;
 
-  @Prop({ required: false })
+  @Prop()
   maritalStatus?: string;
 
-  @Prop({ required: false })
+  @Prop()
   address?: string;
 
-  @Prop({ required: false })
+  @Prop()
   workStatus?: string;
 
-  @Prop({ required: false })
+  @Prop()
   joiningDate?: string;
 
-  @Prop({ required: false })
+  @Prop()
   designation?: string;
 
-  @Prop({ required: false })
+  @Prop()
   department?: string;
 
-  @Prop({ required: false })
+  @Prop()
   reportingManagerId?: string;
 
-  @Prop({ required: false })
+  @Prop()
   remarks?: string;
 
-  @Prop({ required: false })
+  @Prop()
   previousSalary?: number;
 
-  @Prop({ required: false })
+  @Prop()
   baseSalary?: number;
 
-  @Prop({ required: false })
+  @Prop()
   presentGrossSalary?: number;
 
-  @Prop({ type: Object, default: [], required: false })
+  @Prop({ type: Object })
   allowances?: any;
 
-  @Prop({ required: false })
+  @Prop()
   payrollCode?: string;
 
-  @Prop({ required: false })
+  @Prop()
   payFrequency?: string;
 
-  @Prop({ required: false })
+  @Prop()
   targetRate?: number;
 
-  @Prop({ required: false })
+  @Prop()
   bankName?: string;
 
-  @Prop({ required: false })
+  @Prop()
   iban?: string;
 
-  @Prop({ default: false, required: false })
+  @Prop()
   isTaxable?: boolean;
 
-  @Prop({ default: false, required: false })
+  @Prop()
   isOvertimeEligible?: boolean;
 
-  @Prop({ required: false })
+  @Prop()
   passportNo?: string;
 
-  @Prop({ required: false })
+  @Prop()
   passportExp?: string;
 
-  @Prop({ required: false })
+  @Prop()
   visaStatus?: string;
 
-  @Prop({ required: false })
+  @Prop()
   visaStartDate?: string;
 
-  @Prop({ required: false })
+  @Prop()
   visaExpDate?: string;
 
-  @Prop({ required: false })
+  @Prop()
   eidNumber?: string;
 
-  @Prop({ required: false })
+  @Prop()
   eidIssueDate?: string;
 
-  @Prop({ required: false })
+  @Prop()
   eidExpDate?: string;
 
-  @Prop({ type: Object, default: [], required: false })
+  @Prop({ type: Object })
   documents?: any;
 
-  @Prop({ type: Object, default: {}, required: false })
+  @Prop({ type: Object })
   emergencyContact?: any;
 
-  @Prop({ type: Object, default: {}, required: false })
+  @Prop({ type: Object })
   leaveBalances?: any;
 
-  @Prop({ type: Object, default: {}, required: false })
+  @Prop({ type: Object })
   customFieldValues?: any;
 
-  @Prop({ required: false })
+  @Prop()
   createdBy?: string;
 
-  @Prop({ required: false })
+  @Prop()
   updatedBy?: string;
 }
 
 export const EmployeeSchema = SchemaFactory.createForClass(Employee);
 export type EmployeeDocument = Employee & Document;
 
-// // employee.schema.ts - SIMPLIFIED VERSION
+// // schemas/employee.schema.ts - CORRECTED VERSION
 // import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 // import { Document } from 'mongoose';
 
-// @Schema({ timestamps: true })
+// @Schema({ 
+//   timestamps: true, 
+//   strict: false,
+//   validateBeforeSave: false,
+//   autoIndex: true,
+//   collection: 'employees',
+//   versionKey: false
+//   // ❌ Removed skipVersioning - this was causing the error
+// })
 // export class Employee extends Document {
-//   // Required fields only
-//   @Prop({ required: true, unique: true })
-//   staffId: string;
+//   // Make ALL fields optional - use ? for all
+//   @Prop({ unique: true, sparse: true, required: false })
+//   staffId?: string;
 
-//   @Prop({ required: true })
-//   firstName: string;
+//   @Prop({ required: false })
+//   firstName?: string;
 
-//   @Prop()
+//   @Prop({ required: false })
 //   middleName?: string;
 
-//   @Prop({ required: true })
-//   lastName: string;
+//   @Prop({ required: false })
+//   lastName?: string;
 
-//   @Prop({ required: true, unique: true })
-//   email: string;
+//   @Prop({ required: false, unique: false })
+//   email?: string;
 
-//   @Prop({ required: true })
-//   phone: string;
+//   @Prop({ required: false })
+//   phone?: string;
 
 //   @Prop({ required: false })
 //   photoUrl?: string;
 
-//   @Prop({ default: 'Male' })
+//   @Prop({ required: false })
 //   gender?: string;
 
-//   @Prop()
+//   @Prop({ required: false })
 //   dob?: string;
 
-//   @Prop()
+//   @Prop({ required: false })
 //   nationality?: string;
 
-//   @Prop({ default: 'Single' })
+//   @Prop({ required: false })
 //   maritalStatus?: string;
 
-//   @Prop()
+//   @Prop({ required: false })
 //   address?: string;
 
-//   // Employment
-//   @Prop({ required: true, default: 'Active' })
-//   workStatus: string;
+//   @Prop({ required: false })
+//   workStatus?: string;
 
-//   @Prop({ required: true })
-//   joiningDate: string;
+//   @Prop({ required: false })
+//   joiningDate?: string;
 
-//   @Prop({ required: true })
-//   designation: string;
+//   @Prop({ required: false })
+//   designation?: string;
 
-//   @Prop({ required: true })
-//   department: string;
+//   @Prop({ required: false })
+//   department?: string;
 
-//   @Prop()
+//   @Prop({ required: false })
 //   reportingManagerId?: string;
 
-//   @Prop()
+//   @Prop({ required: false })
 //   remarks?: string;
 
-//   // Salary
-//   @Prop({ default: 0 })
+//   @Prop({ required: false })
 //   previousSalary?: number;
 
-//   @Prop({ required: true, default: 0 })
-//   baseSalary: number;
+//   @Prop({ required: false })
+//   baseSalary?: number;
 
-//   @Prop({ required: true, default: 0 })
-//   presentGrossSalary: number;
+//   @Prop({ required: false })
+//   presentGrossSalary?: number;
 
-//   // Make ALL complex fields as optional with flexible types
-//   @Prop({ type: Object, default: [] })
+//   @Prop({ type: Object, default: [], required: false })
 //   allowances?: any;
 
-//   @Prop()
+//   @Prop({ required: false })
 //   payrollCode?: string;
 
-//   @Prop({ default: 'Monthly' })
+//   @Prop({ required: false })
 //   payFrequency?: string;
 
-//   @Prop({ default: 0 })
+//   @Prop({ required: false })
 //   targetRate?: number;
 
-//   @Prop()
+//   @Prop({ required: false })
 //   bankName?: string;
 
-//   @Prop()
+//   @Prop({ required: false })
 //   iban?: string;
 
-//   @Prop({ default: false })
+//   @Prop({ default: false, required: false })
 //   isTaxable?: boolean;
 
-//   @Prop({ default: false })
+//   @Prop({ default: false, required: false })
 //   isOvertimeEligible?: boolean;
 
-//   // Identity
-//   @Prop()
+//   @Prop({ required: false })
 //   passportNo?: string;
 
-//   @Prop()
+//   @Prop({ required: false })
 //   passportExp?: string;
 
-//   @Prop({ default: 'Active' })
+//   @Prop({ required: false })
 //   visaStatus?: string;
 
-//   @Prop()
+//   @Prop({ required: false })
 //   visaStartDate?: string;
 
-//   @Prop()
+//   @Prop({ required: false })
 //   visaExpDate?: string;
 
-//   @Prop()
+//   @Prop({ required: false })
 //   eidNumber?: string;
 
-//   @Prop()
+//   @Prop({ required: false })
 //   eidIssueDate?: string;
 
-//   @Prop()
+//   @Prop({ required: false })
 //   eidExpDate?: string;
 
-//   // Flexible fields - accept ANY structure
-//   @Prop({ type: Object, default: [] })
+//   @Prop({ type: Object, default: [], required: false })
 //   documents?: any;
 
-//   @Prop({ type: Object, default: {} })
+//   @Prop({ type: Object, default: {}, required: false })
 //   emergencyContact?: any;
 
-//   @Prop({ type: Object, default: [] })
+//   @Prop({ type: Object, default: {}, required: false })
 //   leaveBalances?: any;
 
-//   @Prop({ type: Object, default: {} })
+//   @Prop({ type: Object, default: {}, required: false })
 //   customFieldValues?: any;
 
-//   // Audit
-//   @Prop()
+//   @Prop({ required: false })
 //   createdBy?: string;
 
-//   @Prop()
+//   @Prop({ required: false })
 //   updatedBy?: string;
 // }
 

@@ -16,6 +16,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { AttendanceService } from './attendance.service';
 import { CreateAttendanceDto } from './dto/create-attendance.dto';
 import { UpdateAttendanceDto } from './dto/update-attendance.dto';
+import { BulkMonthlyAttendanceDto } from './dto/bulk-monthly-attendance.dto';
 
 // ─── Utility ─────────────────────────────────────────────────────────────────
 
@@ -154,14 +155,11 @@ export class AttendanceController {
 
   /**
    * POST /attendance/import
-   * Bulk import attendance records from Excel/CSV
+   * Bulk import DAILY attendance records from Excel/CSV
    * Body: Array of CreateAttendanceDto
    */
   @Post('import')
-  async importAttendance(
-    @Body() records: CreateAttendanceDto[],
-    @Req() req,
-  ) {
+  async importAttendance(@Body() records: CreateAttendanceDto[], @Req() req) {
     try {
       // Validate that records is an array
       if (!Array.isArray(records)) {
@@ -207,6 +205,159 @@ export class AttendanceController {
   }
 
   /**
+   * POST /attendance/import-monthly
+   * Bulk import MONTHLY attendance summaries from Excel
+   * Body: Array of BulkMonthlyAttendanceDto
+   * Format: Staff ID, Name, Month, Absence, Late Hours, OT Hours
+   */
+  @Post('import-monthly')
+  async importMonthlyAttendance(
+    @Body() records: BulkMonthlyAttendanceDto[],
+    @Req() req,
+  ) {
+    try {
+      // Validate that records is an array
+      if (!Array.isArray(records)) {
+        throw new HttpException(
+          'Request body must be an array of monthly attendance records',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      // Validate that array is not empty
+      if (records.length === 0) {
+        throw new HttpException(
+          'Cannot import empty array of records',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      // Validate maximum batch size
+      if (records.length > 1000) {
+        throw new HttpException(
+          'Cannot import more than 1000 monthly records at once',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      const result = await this.attendanceService.importBulkMonthlyAttendance(
+        records,
+        req.user.userId,
+      );
+
+      return {
+        success: true,
+        imported: result.success,
+        failed: result.failed,
+        message: `Successfully imported ${result.success} monthly attendance records. ${result.failed} failed.`,
+        errors: result.errors,
+      };
+    } catch (error) {
+      throw new HttpException(
+        error.message || 'Failed to import monthly attendance records',
+        error.status || HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  /**
+   * GET /attendance/monthly-summary/:employeeId
+   * Get monthly attendance summary for an employee
+   */
+  @Get('monthly-summary/:employeeId')
+  async getMonthlySummary(
+    @Param('employeeId') employeeId: string,
+    @Query('month') month: number,
+    @Query('year') year: number,
+  ) {
+    try {
+      if (!month || !year) {
+        throw new HttpException(
+          'Month and year are required',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      return await this.attendanceService.getMonthlyAttendanceSummary(
+        employeeId,
+        Number(month),
+        Number(year),
+      );
+    } catch (error) {
+      throw new HttpException(
+        error.message || 'Failed to get monthly summary',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * GET /attendance/monthly-summaries
+   * Get all monthly summaries for a specific month/year
+   * Used by payroll to fetch bulk data
+   */
+  @Get('monthly-summaries')
+  async getAllMonthlySummaries(
+    @Query('month') month: number,
+    @Query('year') year: number,
+  ) {
+    try {
+      if (!month || !year) {
+        throw new HttpException(
+          'Month and year are required',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      return await this.attendanceService.getAllMonthlyAttendanceSummaries(
+        Number(month),
+        Number(year),
+      );
+    } catch (error) {
+      throw new HttpException(
+        error.message || 'Failed to get monthly summaries',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * DELETE /attendance/monthly-summary/:employeeId
+   * Delete monthly summary for an employee
+   */
+  @Delete('monthly-summary/:employeeId')
+  async deleteMonthlyAttendanceSummary(
+    @Param('employeeId') employeeId: string,
+    @Query('month') month: number,
+    @Query('year') year: number,
+  ) {
+    try {
+      if (!month || !year) {
+        throw new HttpException(
+          'Month and year are required',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      await this.attendanceService.deleteMonthlyAttendanceSummary(
+        employeeId,
+        Number(month),
+        Number(year),
+      );
+
+      return {
+        success: true,
+        message: 'Monthly summary deleted successfully',
+      };
+    } catch (error) {
+      throw new HttpException(
+        error.message || 'Failed to delete monthly summary',
+        error.status || HttpStatus.NOT_FOUND,
+      );
+    }
+  }
+
+  /**
    * DELETE /attendance/:id
    * Delete a specific attendance record (admin only)
    */
@@ -215,7 +366,7 @@ export class AttendanceController {
     try {
       // Optional: Add role check here
       // if (req.user.role !== 'admin') throw new HttpException('Forbidden', HttpStatus.FORBIDDEN);
-      
+
       return await this.attendanceService.deleteAttendance(id);
     } catch (error) {
       throw new HttpException(
@@ -236,7 +387,11 @@ export class AttendanceController {
     @Req() req,
   ) {
     try {
-      return await this.attendanceService.updateAttendance(id, dto, req.user.userId);
+      return await this.attendanceService.updateAttendance(
+        id,
+        dto,
+        req.user.userId,
+      );
     } catch (error) {
       throw new HttpException(
         error.message || 'Failed to update attendance record',
