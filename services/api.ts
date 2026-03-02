@@ -1,7 +1,49 @@
-// Base API service
+// api.ts - Complete API Service (No axios dependency)
+
+// ============================================================================
+// ATTENDANCE INTERFACES
+// ============================================================================
+
+export interface CreateAttendanceDto {
+  employeeId: string;
+  date: string;
+  inTime?: string;
+  outTime?: string;
+  checkInMethod?: string;
+  checkInLocation?: {
+    latitude: number;
+    longitude: number;
+  };
+}
+
+export interface UpdateAttendanceDto {
+  outTime?: string;
+  status?: string;
+}
+
+export interface BulkMonthlyAttendanceDto {
+  staffId: string;
+  name: string;
+  month: number;
+  absences: number;
+  lateHours: number;
+  overtimeHours: number;
+  year?: number;
+}
+
+export interface ImportResult {
+  success: number;
+  failed: number;
+  errors: { row: number; staffId: string; reason: string }[];
+  created: any[];
+}
+
+// ============================================================================
+// BASE API SERVICE CLASS (USING FETCH)
+// ============================================================================
+
 class APIService {
-  // Use type assertion to tell TypeScript this exists
-  protected baseURL: string = (import.meta as any).env.VITE_API_URL || 'http://localhost:5000';
+  protected baseURL: string = (import.meta as any).env?.VITE_API_URL || 'http://localhost:5000';
 
   constructor() {
     console.log('🔍 API Base URL:', this.baseURL);
@@ -20,7 +62,6 @@ class APIService {
     
     return headers;
   }
-
 
   // Generic GET request
   async get<T>(endpoint: string): Promise<T> {
@@ -96,15 +137,10 @@ class APIService {
   }
 }
 
-// Define ImportResult type
-interface ImportResult {
-  success: number;
-  failed: number;
-  errors: { row: number; staffId: string; reason: string }[];
-  created: any[];
-}
+// ============================================================================
+// HR SPECIFIC API SERVICE (CLASS-BASED)
+// ============================================================================
 
-// HR specific API service
 export class HRAPI extends APIService {
 
   // ============================================================================
@@ -126,7 +162,6 @@ export class HRAPI extends APIService {
             photoUrl: emp.photoUrl,
             hasPhotoUrl: !!emp.photoUrl
           });
-          console.log(`   Full employee object:`, JSON.stringify(emp, null, 2));
         });
       }
       
@@ -148,10 +183,16 @@ export class HRAPI extends APIService {
   async updateEmployee(id: string, employeeData: any) {
     console.log('📤 Updating employee:', id);
     console.log('📝 Update data includes photoUrl:', employeeData.photoUrl);
-    const response = await this.put<any>(`/employees/${id}`, employeeData);
-    console.log('✅ Update response:', response);
-    console.log('📸 Response photoUrl:', response.photoUrl);
-    return response;
+    
+    try {
+      const response = await this.put<any>(`/employees/${id}`, employeeData);
+      console.log('✅ Update response:', response);
+      console.log('📸 Response photoUrl:', response.photoUrl);
+      return response;
+    } catch (error) {
+      console.error('❌ Update failed:', error);
+      throw error;
+    }
   }
 
   async deleteEmployee(id: string) {
@@ -244,7 +285,7 @@ export class HRAPI extends APIService {
   }
 
   // ============================================================================
-  // ATTENDANCE ENDPOINTS ⭐
+  // ATTENDANCE ENDPOINTS
   // ============================================================================
 
   /**
@@ -321,7 +362,7 @@ export class HRAPI extends APIService {
   }
 
   /**
-   * Bulk import attendance records ⭐ KEY METHOD for biometric upload
+   * Bulk import attendance records
    */
   async importAttendance(records: any[]): Promise<any> {
     console.log('📤 Importing attendance records:', records.length);
@@ -359,6 +400,74 @@ export class HRAPI extends APIService {
       : `/attendance/stats/${employeeId}`;
 
     return this.get<any>(url);
+  }
+
+  // ============================================================================
+  // BULK MONTHLY ATTENDANCE API
+  // ============================================================================
+
+  /**
+   * Import bulk monthly attendance from Excel
+   */
+  async importMonthlyAttendance(records: BulkMonthlyAttendanceDto[]): Promise<{
+    success: boolean;
+    imported: number;
+    failed: number;
+    message: string;
+    errors: Array<{ row: number; staffId: string; error: string }>;
+  }> {
+    console.log('📤 Importing monthly attendance records:', records.length);
+    return this.post<any>('/attendance/import-monthly', records);
+  }
+
+  /**
+   * Get monthly attendance summary for an employee
+   */
+  async getMonthlyAttendanceSummary(
+    employeeId: string,
+    month: number,
+    year: number,
+  ): Promise<{
+    absences: number;
+    lateHours: number;
+    overtimeHours: number;
+    hasMonthlySummary: boolean;
+  }> {
+    return this.get<any>(
+      `/attendance/monthly-summary/${employeeId}?month=${month}&year=${year}`
+    );
+  }
+
+  /**
+   * Get all monthly summaries for a month/year
+   */
+  async getAllMonthlyAttendanceSummaries(
+    month: number,
+    year: number,
+  ): Promise<
+    Array<{
+      employeeId: string;
+      staffId: string;
+      name: string;
+      absences: number;
+      lateHours: number;
+      overtimeHours: number;
+    }>
+  > {
+    return this.get<any>(`/attendance/monthly-summaries?month=${month}&year=${year}`);
+  }
+
+  /**
+   * Delete monthly attendance summary
+   */
+  async deleteMonthlyAttendanceSummary(
+    employeeId: string,
+    month: number,
+    year: number,
+  ): Promise<{ success: boolean; message: string }> {
+    return this.delete<any>(
+      `/attendance/monthly-summary/${employeeId}?month=${month}&year=${year}`
+    );
   }
 
   // ============================================================================
@@ -411,6 +520,11 @@ export class HRAPI extends APIService {
 
   async deletePayrollByMonth(year: number, month: number): Promise<any> {
     return this.delete<any>(`/payroll/month/${year}/${month}`);
+  }
+
+  async deletePayrollEntry(entryId: string): Promise<any> {
+    console.log('📤 Deleting payroll entry:', entryId);
+    return this.delete<any>(`/payroll/entry/${entryId}`);
   }
 
   async getAllPayrolls(filters?: {
@@ -466,98 +580,122 @@ export class HRAPI extends APIService {
     }
   }
 
+  /**
+   * Sync attendance data to payroll
+   */
+  async syncAttendanceToPayroll(
+    periodId: string,
+    month: number,
+    year: number,
+  ): Promise<{
+    success: boolean;
+    updated: number;
+    message: string;
+  }> {
+    // Fix: Use URLSearchParams for query parameters
+    const params = new URLSearchParams();
+    params.append('month', month.toString());
+    params.append('year', year.toString());
+    
+    return this.post(`/payroll/period/${periodId}/sync-attendance?${params.toString()}`, {});
+  }
+
   // ============================================================================
   // EMPLOYEE PHOTO ENDPOINT
   // ============================================================================
 
   async uploadEmployeePhoto(employeeId: string, file: File): Promise<any> {
-      console.log('🚀 Starting photo upload for employee:', employeeId);
-      console.log('📁 File details:', { name: file.name, size: file.size, type: file.type });
-      
-      const formData = new FormData();
-      formData.append('photo', file);
-      
-      const token = localStorage.getItem('access_token') || localStorage.getItem('yespeople_jwt_token');
-      
-      const response = await fetch(`${this.baseURL}/employees/${employeeId}/photo`, {
-          method: 'POST',
-          headers: {
-              'Authorization': `Bearer ${token}`
-              // Don't set Content-Type - browser will set it with boundary
-          },
-          body: formData
-      });
-      
-      if (!response.ok) {
-          const errorText = await response.text();
-          console.error('❌ Upload failed with status:', response.status);
-          console.error('❌ Error response:', errorText);
-          throw new Error(errorText || `Error ${response.status}`);
-      }
-      
-      const result = await response.json();
-      console.log('✅ Upload API response received');
-      console.log('📦 Full response object:', result);
-      console.log('📸 photoUrl in response:', result.photoUrl);
-      console.log('🔍 Response structure:', JSON.stringify(result, null, 2));
-      
-      return result;
+    console.log('🚀 Starting photo upload for employee:', employeeId);
+    console.log('📁 File details:', { name: file.name, size: file.size, type: file.type });
+    
+    const formData = new FormData();
+    formData.append('photo', file);
+    
+    const token = localStorage.getItem('access_token') || localStorage.getItem('yespeople_jwt_token');
+    
+    const response = await fetch(`${this.baseURL}/employees/${employeeId}/photo`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`
+        // Don't set Content-Type - browser will set it with boundary
+      },
+      body: formData
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ Upload failed with status:', response.status);
+      console.error('❌ Error response:', errorText);
+      throw new Error(errorText || `Error ${response.status}`);
+    }
+    
+    const result = await response.json();
+    console.log('✅ Upload API response received');
+    console.log('📦 Full response object:', result);
+    console.log('📸 photoUrl in response:', result.photoUrl);
+    
+    return result;
   }
 
   // ============================================================================
-  // SERVICE REQUESTS ENDPOINTS (Leave, Permission, Cash, Resignation) 
+  // SERVICE REQUESTS ENDPOINTS
   // ============================================================================
 
   async getServiceRequests(filters?: { 
-      employeeId?: string; 
-      requestType?: string; 
-      status?: string;
+    employeeId?: string; 
+    requestType?: string; 
+    status?: string;
   }) {
-      try {
-          const queryParams = new URLSearchParams();
-          if (filters?.employeeId) queryParams.append('employeeId', filters.employeeId);
-          if (filters?.requestType) queryParams.append('requestType', filters.requestType);
-          if (filters?.status) queryParams.append('status', filters.status);
-          
-          const queryString = queryParams.toString();
-          const url = queryString ? `/service-requests?${queryString}` : '/service-requests';
-          
-          console.log('📡 Fetching service requests from:', url);
-          
-          const response = await this.get<any>(url);
-          return Array.isArray(response) ? response : [];
-      } catch (error: any) {
-          // Check if it's a 404 error
-          if (error.message?.includes('404')) {
-              console.log('ℹ️ Service requests endpoint not found - returning empty array');
-              return []; // Return empty array on 404
-          }
-          console.error('❌ Failed to fetch service requests:', error);
-          return [];
+    try {
+      const queryParams = new URLSearchParams();
+      if (filters?.employeeId) queryParams.append('employeeId', filters.employeeId);
+      if (filters?.requestType) queryParams.append('requestType', filters.requestType);
+      if (filters?.status) queryParams.append('status', filters.status);
+      
+      const queryString = queryParams.toString();
+      const url = queryString ? `/service-requests?${queryString}` : '/service-requests';
+      
+      console.log('📡 Fetching service requests from:', url);
+      
+      const response = await this.get<any>(url);
+      return Array.isArray(response) ? response : [];
+    } catch (error: any) {
+      if (error.message?.includes('404')) {
+        console.log('ℹ️ Service requests endpoint not found - returning empty array');
+        return [];
       }
+      console.error('❌ Failed to fetch service requests:', error);
+      return [];
+    }
   }
 
   async createServiceRequest(data: any) {
-      console.log('📤 Creating service request:', data);
-      return this.post<any>('/service-requests', data);
+    console.log('📤 Creating service request:', data);
+    return this.post<any>('/service-requests', data);
   }
 
   async updateServiceRequestStatus(id: string, status: 'Approved' | 'Rejected', managerNotes?: string) {
-      console.log(`📤 Updating service request ${id} to ${status}`);
-      return this.put<any>(`/service-requests/${id}/status`, {
-          status,
-          managerNotes
-      });
+    console.log(`📤 Updating service request ${id} to ${status}`);
+    return this.put<any>(`/service-requests/${id}/status`, {
+      status,
+      managerNotes
+    });
   }
 
   async deleteServiceRequest(id: string) {
-      console.log(`📤 Deleting service request ${id}`);
-      return this.delete<any>(`/service-requests/${id}`);
+    console.log(`📤 Deleting service request ${id}`);
+    return this.delete<any>(`/service-requests/${id}`);
   }
 }
 
-// Create singleton instance
+// ============================================================================
+// CREATE SINGLETON INSTANCE
+// ============================================================================
+
+// Create singleton instance of HRAPI
 export const api = new HRAPI();
+
+
 
 // // Base API service
 // class APIService {
@@ -657,6 +795,14 @@ export const api = new HRAPI();
 //   }
 // }
 
+// // Define ImportResult type
+// interface ImportResult {
+//   success: number;
+//   failed: number;
+//   errors: { row: number; staffId: string; reason: string }[];
+//   created: any[];
+// }
+
 // // HR specific API service
 // export class HRAPI extends APIService {
 
@@ -701,10 +847,16 @@ export const api = new HRAPI();
 //   async updateEmployee(id: string, employeeData: any) {
 //     console.log('📤 Updating employee:', id);
 //     console.log('📝 Update data includes photoUrl:', employeeData.photoUrl);
-//     const response = await this.put<any>(`/employees/${id}`, employeeData);
-//     console.log('✅ Update response:', response);
-//     console.log('📸 Response photoUrl:', response.photoUrl);
-//     return response;
+    
+//     try {
+//       const response = await this.put<any>(`/employees/${id}`, employeeData);
+//       console.log('✅ Update response:', response);
+//       console.log('📸 Response photoUrl:', response.photoUrl);
+//       return response;
+//     } catch (error) {
+//       console.error('❌ Update failed:', error);
+//       throw error;
+//     }
 //   }
 
 //   async deleteEmployee(id: string) {
@@ -964,6 +1116,11 @@ export const api = new HRAPI();
 
 //   async deletePayrollByMonth(year: number, month: number): Promise<any> {
 //     return this.delete<any>(`/payroll/month/${year}/${month}`);
+//   }
+
+//   async deletePayrollEntry(entryId: string): Promise<any> {
+//     console.log('📤 Deleting payroll entry:', entryId);
+//     return this.delete<any>(`/payroll/entry/${entryId}`);
 //   }
 
 //   async getAllPayrolls(filters?: {

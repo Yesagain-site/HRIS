@@ -737,6 +737,41 @@ const PayrollPage: React.FC = () => {
     }
   };
 
+  // Add this function after handleClearData or before the return
+  const handleDeleteEntry = useCallback(async (entryId: string) => {
+    if (periodStatus === 'generated') {
+      alert('Cannot delete entries from a generated payroll');
+      return;
+    }
+
+    try {
+      console.log('🗑️ Deleting payroll entry:', entryId);
+      await api.deletePayrollEntry(entryId);
+      
+      // Remove from local state and renumber SR
+      setPayrollEntries(prev => {
+        // First, filter out the deleted entry
+        const filtered = prev.filter(entry => entry.id !== entryId);
+        
+        // Then renumber the remaining entries sequentially
+        const renumbered = filtered.map((entry, index) => ({
+          ...entry,
+          sr: index + 1  // Start from 1
+        }));
+        
+        console.log('✅ After deletion - new count:', renumbered.length);
+        console.log('📊 SR numbers:', renumbered.map(e => `${e.name}: ${e.sr}`));
+        
+        return renumbered;
+      });
+      
+      alert('✅ Entry deleted successfully!');
+    } catch (error) {
+      console.error('❌ Error deleting entry:', error);
+      alert('Failed to delete entry');
+    }
+  }, [periodStatus]);
+
   // ============= LOAD MY PAYSLIPS =============
   const loadMyPayslips = useCallback(async () => {
     if (!employeeDetails?.id) return;
@@ -990,6 +1025,7 @@ const PayrollPage: React.FC = () => {
                     // Navigate to detail page with the entry data
                     navigate(`/payroll/${entry.id}`, { state: { entry } });
                   }}
+                  onDeleteEntry={handleDeleteEntry}
                 />
               ) : (
                 <div className="text-center py-16">

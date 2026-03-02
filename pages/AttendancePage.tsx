@@ -8,6 +8,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { NewRequestModal } from './EmployeeServicesPage';
 import * as XLSX from 'xlsx';
 import { api } from '../services/api';
+import BulkMonthlyAttendanceUpload from '../components/Bulkmonthlyattendanceupload';
 
 const currentYear = new Date().getFullYear();
 const years = Array.from({ length: 5 }, (_, i) => currentYear - i);
@@ -2467,6 +2468,7 @@ const AttendancePage: React.FC = () => {
             { id: 'scheduler', label: 'Shift Scheduler' },
             { id: 'holidays', label: 'Holiday Calendar' },
             { id: 'upload', label: 'Biometric Upload' },
+            { id: 'monthly-upload', label: 'Monthly Upload' }
         ] : []),
         
         { id: 'myAttendance', label: 'My Attendance' },
@@ -2499,6 +2501,7 @@ const AttendancePage: React.FC = () => {
                     {activeTab === 'scheduler' && canManage && <ShiftSchedulerTab />}
                     {activeTab === 'holidays' && canManage && <HolidaysTab />}
                     {activeTab === 'upload' && canManage && <BiometricUploadTab />}
+                    {activeTab === 'monthly-upload' && canManage && <BulkMonthlyAttendanceUpload />}
                 </div>
             </Card>
         </div>

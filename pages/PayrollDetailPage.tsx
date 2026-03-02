@@ -117,9 +117,9 @@ const calculateEntryLocally = (entry: PayrollEntry): PayrollEntry => {
     (entry.cleaningFees || 0)
   ).toFixed(2));
   
-  // Overtime amount = 1.5 × (overtimeHours × hourlyRate)
+  // Overtime amount = 1 × (overtimeHours × hourlyRate)
   calculated.overtimeAmount = calculated.hourlyRate > 0 
-    ? Number((1.5 * (entry.overtimeHours || 0) * calculated.hourlyRate).toFixed(2)) 
+    ? Number(((entry.overtimeHours || 0) * calculated.hourlyRate * 1).toFixed(2)) 
     : 0;
   
   // Net Deductions = All Deductions - Overtime Amount

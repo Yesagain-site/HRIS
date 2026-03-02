@@ -7,7 +7,7 @@ import {
     PayComponent, PayComponentType, PayCycle, RoundingRule, GLCodeMapping,
     AttendanceRule, APIKey, Webhook, IntegrationSettings, SSOSettings,
     NotificationSetting, NotificationRecipient, UIThemeSettings
-} from '../types';
+} from '../types'
 import { api } from '../services/api';
 
 const TABS = {
@@ -111,15 +111,29 @@ const defaultSystemSettings: SystemSettings = {
 
 const getEmployeeDisplayName = (employee?: any) => {
     if (!employee) return 'N/A';
-    const firstName = employee.firstName || '';
-    const lastName = employee.lastName || '';
     
-    if (firstName && lastName) {
-        return `${firstName} ${lastName}`;
-    } else if (firstName) {
-        return firstName;
-    } else if (lastName) {
-        return lastName;
+    // Collect all name parts and filter out empty/null/undefined
+    const nameParts = [
+        employee.firstName || '',
+        employee.middleName || '',
+        employee.lastName || ''
+    ].filter(part => part && part !== 'null' && part !== 'undefined' && part !== 'NULL' && part !== 'Nulll');
+    
+    // Join the parts with spaces
+    const fullName = nameParts.join(' ').trim();
+    
+    // If we have a valid name, return it
+    if (fullName) {
+        return fullName;
+    }
+    
+    // Fallback to staffId or email if available
+    if (employee.staffId) {
+        return `Employee (${employee.staffId})`;
+    }
+    
+    if (employee.email) {
+        return employee.email;
     }
     
     return 'N/A';
@@ -605,7 +619,7 @@ const UserFormModal: React.FC<{
     user: any | null; 
     roles: Role[]; 
     employees: Employee[];
-    users: UserAccount[];
+    users: User[];
 }> = ({ isOpen, onClose, onSave, user, roles = [], employees = [], users = [] }) => {
     const [formData, setFormData] = useState({
         username: '',
@@ -627,7 +641,6 @@ const UserFormModal: React.FC<{
     }, [users]);
 
     // Filter employees to show only those NOT already assigned to a user
-    // And sort alphabetically by name
     const availableEmployees = useMemo(() => {
         return employees
             .filter(emp => {
@@ -639,9 +652,26 @@ const UserFormModal: React.FC<{
                 return !assignedEmployeeIds.includes(emp.id);
             })
             .sort((a, b) => {
-                const nameA = `${a.firstName || ''} ${a.lastName || ''}`.trim().toLowerCase();
-                const nameB = `${b.firstName || ''} ${b.lastName || ''}`.trim().toLowerCase();
-                return nameA.localeCompare(nameB);
+                // Get full names using the same logic
+                const getName = (emp: any) => {
+                    const parts = [
+                        emp.firstName || '',
+                        emp.middleName || '',
+                        emp.lastName || ''
+                    ].filter(part => part && part !== 'null' && part !== 'undefined');
+                    return parts.join(' ').trim().toLowerCase();
+                };
+                
+                const nameA = getName(a);
+                const nameB = getName(b);
+                
+                // If both have names, compare
+                if (nameA && nameB) {
+                    return nameA.localeCompare(nameB);
+                }
+                
+                // Fallback to staffId comparison
+                return (a.staffId || '').localeCompare(b.staffId || '');
             });
     }, [employees, assignedEmployeeIds, user]);
 
