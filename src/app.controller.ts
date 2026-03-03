@@ -14,8 +14,4 @@ export class AppController {
     };
   }
   
-  @Get('test')
-  test() {
-    return { message: 'Test endpoint working' };
-  }
 }

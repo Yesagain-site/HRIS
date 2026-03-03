@@ -1,5 +1,7 @@
 // src/app.module.ts
 import { Module } from '@nestjs/common';
+import { AppController } from './app.controller';
+import { AppService } from './app.service';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AuthModule } from './auth/auth.module';
@@ -9,7 +11,6 @@ import { AttendanceModule } from './attendance/attendance.module';
 import { ServiceRequestsModule } from './employee-services/employee-services.module';
 import * as dotenv from 'dotenv';
 
-// Load .env manually for debugging
 dotenv.config();
 console.log('🔍 Direct process.env.MONGODB_URI:', process.env.MONGODB_URI ? 'Found' : 'Not found');
 
@@ -21,7 +22,6 @@ console.log('🔍 Direct process.env.MONGODB_URI:', process.env.MONGODB_URI ? 'F
     MongooseModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => {
-        // Try multiple ways to get the URI
         const uriFromConfig = config.get<string>('MONGODB_URI');
         const uriFromEnv = process.env.MONGODB_URI;
         
@@ -42,5 +42,8 @@ console.log('🔍 Direct process.env.MONGODB_URI:', process.env.MONGODB_URI ? 'F
     AttendanceModule,
     ServiceRequestsModule,
   ],
+  // ✅ ADD THIS - IT'S MISSING!
+  controllers: [AppController],
+  providers: [AppService],
 })
 export class AppModule {}
