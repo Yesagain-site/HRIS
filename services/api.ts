@@ -48,6 +48,7 @@ class APIService {
   constructor() {
     console.log('🔍 API Base URL:', this.baseURL);
     console.log('🔍 All env vars:', (import.meta as any).env);
+    console.log('hello');
   }
 
   private getAuthHeaders() {
