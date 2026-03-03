@@ -9,7 +9,7 @@ interface UploadResult {
   message: string;
   errors: Array<{ row: number; staffId: string; error: string }>;
 }
-
+//
 export const BulkMonthlyAttendanceUpload: React.FC = () => {
   const [file, setFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
