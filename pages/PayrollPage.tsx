@@ -325,21 +325,29 @@ const PayrollPage: React.FC = () => {
       return;
     }
     
-    // First update the UI optimistically
+    console.log('🔵 FRONTEND UPDATE:', { entryId, field, value });
+    
+    // First update the UI optimistically and get the fully calculated entry
     let updatedEntry: PayrollEntry | undefined;
     
     setPayrollEntries(prev => {
       const updatedEntries = prev.map(entry => {
         if (entry.id === entryId) {
-          // Update the field
+          console.log(`📝 Updating ${entry.name}: ${field} = ${value}`);
+          // Update the field and recalculate ALL fields
           const updated = { ...entry, [field]: value };
-          // Recalculate
-          return calculateEntryLocally(updated);
+          const calculated = calculateEntryLocally(updated);
+          console.log('🧮 Calculated entry:', {
+            absences: calculated.absences,
+            lateHours: calculated.lateHours,
+            visaCost: calculated.visaCost,
+            total: calculated.total
+          });
+          return calculated;
         }
         return entry;
       });
       
-      // Store the updated entry for later use
       updatedEntry = updatedEntries.find(e => e.id === entryId);
       return updatedEntries;
     });
@@ -349,15 +357,13 @@ const PayrollPage: React.FC = () => {
     
     try {
       if (entryId.startsWith('temp-')) {
-        // This is a new entry that needs to be created in the database
+        // Handle new entry creation (same as before)
         if (!payrollPeriodId) {
           console.log('⏳ Waiting for period ID...');
           return;
         }
         
         console.log('📤 Creating new entry in database');
-        
-        // Prepare entry data without temp ID
         const { id, ...entryData } = updatedEntry;
         const entryToCreate = {
           ...entryData,
@@ -365,10 +371,8 @@ const PayrollPage: React.FC = () => {
           employeeId: updatedEntry.employeeId || null
         };
         
-        // Save to database
         const savedEntry = await api.createPayrollEntry(entryToCreate);
         
-        // Update the local state with the real ID
         setPayrollEntries(prev => 
           prev.map(e => 
             e.id === entryId 
@@ -380,12 +384,50 @@ const PayrollPage: React.FC = () => {
         console.log('✅ Entry created with ID:', savedEntry._id);
         
       } else {
-        // Existing entry - update only the single field
-        console.log(`📤 Updating existing entry:`, { entryId, field, value });
+        // 🔴 IMPORTANT FIX: Save ALL fields that were affected by the calculation
+        // Instead of saving just { [field]: value }, save all fields that could change
         
-        // ✅ FIX: Send only the field that changed
-        const updateData = { [field]: value };
-        await api.updatePayrollEntry(entryId, updateData);
+        // These are all the fields that get recalculated when any value changes
+        const updateData = {
+          // Attendance fields
+          absences: updatedEntry.absences,
+          lateHours: updatedEntry.lateHours,
+          overtimeHours: updatedEntry.overtimeHours,
+          workedDays: updatedEntry.workedDays,
+          
+          // Deduction fields
+          authAbsenceDeduction: updatedEntry.authAbsenceDeduction,
+          unauthAbsenceDeduction: updatedEntry.unauthAbsenceDeduction,
+          tardiness: updatedEntry.tardiness,
+          allDeductions: updatedEntry.allDeductions,
+          
+          // Earning fields
+          dailyRate: updatedEntry.dailyRate,
+          hourlyRate: updatedEntry.hourlyRate,
+          offDayAmount: updatedEntry.offDayAmount,
+          holidayAmount: updatedEntry.holidayAmount,
+          total: updatedEntry.total,
+          overtimeAmount: updatedEntry.overtimeAmount,
+          netDeductions: updatedEntry.netDeductions,
+          januaryNetSalary: updatedEntry.januaryNetSalary,
+          totalJanuarySalary: updatedEntry.totalJanuarySalary,
+          beforeOT: updatedEntry.beforeOT,
+          ot: updatedEntry.ot,
+          totalCalculated: updatedEntry.totalCalculated,
+          dfrnce: updatedEntry.dfrnce,
+          deductions: updatedEntry.deductions,
+          inDays: updatedEntry.inDays,
+          
+          // Also include the specific field that changed (in case it's not in the list)
+          [field]: value,
+          
+          isCalculated: true
+        };
+        
+        console.log('📤 Sending update with ALL fields:', updateData);
+        
+        const response = await api.updatePayrollEntry(entryId, updateData);
+        console.log('✅ API Response:', response);
       }
     } catch (error) {
       console.error('❌ Error saving entry:', error);
