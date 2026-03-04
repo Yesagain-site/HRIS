@@ -578,37 +578,49 @@ export class AttendanceService {
           year: year,
         });
 
+        // Prepare the monthly summary data
+        const summaryData = {
+          employeeId: employee._id,
+          staffId: record.staffId,
+          employeeName: record.name,
+          date: dateString,
+          recordType: 'monthly_summary',
+          month: record.month,
+          year: year,
+          absences: record.absences || 0,
+          lateHours: record.lateHours || 0,
+          overtimeHours: record.overtimeHours || 0,
+          createdBy: new Types.ObjectId(userId),
+          // Set defaults for unused fields in monthly summaries
+          workHours: 0,
+          status: 'Summary',
+          inTime: null,
+          outTime: null,
+          isLate: false,
+          lateMinutes: 0,
+          isEarlyDeparture: false,
+          earlyDepartureMinutes: 0,
+        };
+
         if (existing) {
-          // Update existing record
-          existing.absences = record.absences;
-          existing.lateHours = record.lateHours;
-          existing.overtimeHours = record.overtimeHours;
+          // Update existing record - only update the summary fields
+          existing.absences = record.absences || 0;
+          existing.lateHours = record.lateHours || 0;
+          existing.overtimeHours = record.overtimeHours || 0;
           existing.employeeName = record.name;
+          existing.staffId = record.staffId;
           await existing.save();
+          console.log(`Updated monthly summary for ${record.staffId} - Month ${record.month}/${year}`);
         } else {
           // Create new monthly summary record
-          const monthlySummary = new this.attendanceModel({
-            employeeId: employee._id,
-            staffId: record.staffId,
-            employeeName: record.name,
-            date: dateString,
-            recordType: 'monthly_summary',
-            month: record.month,
-            year: year,
-            absences: record.absences,
-            lateHours: record.lateHours,
-            overtimeHours: record.overtimeHours,
-            createdBy: new Types.ObjectId(userId),
-            // Set defaults for unused fields in monthly summaries
-            workHours: 0,
-            status: 'Summary',
-          });
-
+          const monthlySummary = new this.attendanceModel(summaryData);
           await monthlySummary.save();
+          console.log(`Created monthly summary for ${record.staffId} - Month ${record.month}/${year}`);
         }
 
         results.success++;
       } catch (error) {
+        console.error(`Error processing row ${rowNumber}:`, error);
         results.failed++;
         results.errors.push({
           row: rowNumber,
@@ -698,26 +710,41 @@ export class AttendanceService {
     year: number,
   ): Promise<
     Array<{
+      id: string;
       employeeId: string;
       staffId: string;
-      name: string;
+      employeeName: string;
+      month: number;
+      year: number;
       absences: number;
       lateHours: number;
       overtimeHours: number;
+      createdAt?: string;
     }>
   > {
+    console.log(`Fetching monthly summaries for month: ${month}, year: ${year}`);
+    
     const summaries = await this.attendanceModel
       .find({
         recordType: 'monthly_summary',
-        month,
-        year,
+        month: month,
+        year: year,
       })
-      .populate('employeeId', 'staffId firstName lastName');
+      .populate('employeeId', 'staffId firstName lastName')
+      .lean()
+      .exec();
+
+    console.log(`Found ${summaries.length} monthly summaries`);
 
     return summaries.map((summary) => ({
-      employeeId: summary.employeeId.toString(),
-      staffId: summary.staffId,
-      name: summary.employeeName,
+      id: summary._id.toString(),
+      employeeId: summary.employeeId?._id?.toString() || summary.employeeId.toString(),
+      staffId: summary.staffId || (summary.employeeId as any)?.staffId || '',
+      employeeName: summary.employeeName || 
+                  `${(summary.employeeId as any)?.firstName || ''} ${(summary.employeeId as any)?.lastName || ''}`.trim() ||
+                  'Unknown',
+      month: summary.month,
+      year: summary.year,
       absences: summary.absences || 0,
       lateHours: summary.lateHours || 0,
       overtimeHours: summary.overtimeHours || 0,
@@ -740,286 +767,3 @@ export class AttendanceService {
     });
   }
 }
-// import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-// import { InjectModel } from '@nestjs/mongoose';
-// import { Model, Types } from 'mongoose';
-// import { Attendance } from './schemas/attendance.schema';
-// import { CreateAttendanceDto } from './dto/create-attendance.dto';
-// import { UpdateAttendanceDto } from './dto/update-attendance.dto';
-
-// // ─── Company Shift Configuration ─────────────────────────────────────────────
-// const SHIFT_START_HOUR   = 8;    // 08:00 AM
-// const SHIFT_START_MINUTE = 0;
-// const SHIFT_END_HOUR     = 19;   // 07:00 PM
-// const SHIFT_END_MINUTE   = 0;
-// const STANDARD_HOURS     = 11;   // 8 AM → 7 PM = 11 hours
-// const LATE_GRACE_MINUTES = 5;    // Allow 5-minute grace before marking Late
-
-// // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-// /** Converts "HH:MM" string to total minutes from midnight */
-// function timeToMinutes(time: string): number {
-//   const [h, m] = time.split(':').map(Number);
-//   return h * 60 + m;
-// }
-
-// const SHIFT_START_MINS = SHIFT_START_HOUR * 60 + SHIFT_START_MINUTE; // 480
-// const SHIFT_END_MINS   = SHIFT_END_HOUR   * 60 + SHIFT_END_MINUTE;   // 1140
-
-// /**
-//  * Determines the attendance status and lateness based on clock-in time.
-//  * Returns an object with isLate, lateMinutes, lateHours, and status.
-//  */
-// function evaluateClockIn(inTime: string): {
-//   isLate: boolean;
-//   lateMinutes: number;
-//   lateHours: number;
-//   status: string;
-// } {
-//   const inMins    = timeToMinutes(inTime);
-//   const lateMins  = Math.max(0, inMins - SHIFT_START_MINS);
-//   const isLate    = lateMins > LATE_GRACE_MINUTES;
-
-//   return {
-//     isLate,
-//     lateMinutes : isLate ? lateMins : 0,
-//     lateHours   : isLate ? parseFloat((lateMins / 60).toFixed(4)) : 0,
-//     status      : isLate ? 'Late' : 'Present',
-//   };
-// }
-
-// /**
-//  * Evaluates clock-out time to determine early departure and overtime.
-//  * @param inTime    - HH:MM string (when the employee clocked in)
-//  * @param outTime   - HH:MM string (when the employee clocked out)
-//  * @param currentStatus - current status on the record ('Present' or 'Late')
-//  */
-// function evaluateClockOut(
-//   inTime: string,
-//   outTime: string,
-//   currentStatus: string,
-// ): {
-//   isEarlyDeparture: boolean;
-//   earlyDepartureMinutes: number;
-//   workHours: number;
-//   overtimeHours: number;
-//   status: string;
-// } {
-//   const inMins   = timeToMinutes(inTime);
-//   const outMins  = timeToMinutes(outTime);
-
-//   // Work hours from actual in → out
-//   const rawWorkMins   = Math.max(0, outMins - inMins);
-//   const workHours     = parseFloat((rawWorkMins / 60).toFixed(4));
-
-//   // Early departure: left before shift end
-//   const earlyMins          = Math.max(0, SHIFT_END_MINS - outMins);
-//   const isEarlyDeparture   = earlyMins > 0;
-
-//   // Overtime: worked beyond standard hours
-//   const overtimeMins  = Math.max(0, rawWorkMins - STANDARD_HOURS * 60);
-//   const overtimeHours = parseFloat((overtimeMins / 60).toFixed(4));
-
-//   // Status priority:  Late > Early Departure > Present
-//   let status = currentStatus; // preserve 'Late' if already set
-//   if (isEarlyDeparture && status !== 'Late') {
-//     status = 'Early Departure';
-//   }
-
-//   return {
-//     isEarlyDeparture,
-//     earlyDepartureMinutes: isEarlyDeparture ? earlyMins : 0,
-//     workHours,
-//     overtimeHours,
-//     status,
-//   };
-// }
-
-// // ─── Service ─────────────────────────────────────────────────────────────────
-
-// @Injectable()
-// export class AttendanceService {
-//   constructor(
-//     @InjectModel(Attendance.name) private attendanceModel: Model<Attendance>,
-//   ) {}
-
-//   /**
-//    * Clock-In
-//    * The frontend sends the UAE-local date and inTime.
-//    * The backend re-calculates all late metrics authoritatively.
-//    */
-//   async clockIn(
-//     employeeId: string,
-//     dto: CreateAttendanceDto,
-//     userId: string,
-//   ): Promise<Attendance> {
-//     // Prevent duplicate clock-in on the same date
-//     const existing = await this.attendanceModel.findOne({
-//       employeeId : new Types.ObjectId(employeeId),
-//       date       : dto.date,
-//       inTime     : { $exists: true },
-//     });
-
-//     if (existing) {
-//       throw new BadRequestException('Already clocked in today');
-//     }
-
-//     // Evaluate lateness
-//     const inTime = dto.inTime || '00:00';
-//     const lateInfo = evaluateClockIn(inTime);
-
-//     const attendance = new this.attendanceModel({
-//       employeeId    : new Types.ObjectId(employeeId),
-//       date          : dto.date,
-//       inTime,
-//       checkInMethod : dto.checkInMethod,
-//       checkInLocation: dto.checkInLocation,
-//       createdBy     : new Types.ObjectId(userId),
-//       // ── Evaluated fields ──
-//       isLate        : lateInfo.isLate,
-//       lateMinutes   : lateInfo.lateMinutes,
-//       lateHours     : lateInfo.lateHours,
-//       status        : lateInfo.status,
-//       // Defaults for out-fields (will be set on clock-out)
-//       workHours     : 0,
-//       overtimeHours : 0,
-//       isEarlyDeparture     : false,
-//       earlyDepartureMinutes: 0,
-//     });
-
-//     return attendance.save();
-//   }
-
-//   /**
-//    * Clock-Out
-//    * Finds today's open record and fills in out-time, work hours, OT, and
-//    * early-departure flag.  The backend re-calculates everything from the
-//    * stored inline frontend cannot spend hours yahya has told 
-//    */
-//   async clockOut(
-//     employeeId: string,
-//     date: string,
-//     dto: UpdateAttendanceDto,
-//   ): Promise<Attendance> {
-//     const attendance = await this.attendanceModel.findOne({
-//       employeeId : new Types.ObjectId(employeeId),
-//       date,
-//       outTime    : { $exists: false },
-//     });
-
-//     if (!attendance) {
-//       throw new NotFoundException('No open clock-in record found for today');
-//     }
-
-//     const outTime = dto.outTime || '00:00';
-//     const outInfo = evaluateClockOut(
-//       attendance.inTime,
-//       outTime,
-//       attendance.status, // preserve existing 'Late' status if applicable
-//     );
-
-//     Object.assign(attendance, {
-//       outTime,
-//       workHours            : outInfo.workHours,
-//       overtimeHours        : outInfo.overtimeHours,
-//       isEarlyDeparture     : outInfo.isEarlyDeparture,
-//       earlyDepartureMinutes: outInfo.earlyDepartureMinutes,
-//       status               : outInfo.status,
-//     });
-
-//     return attendance.save();
-//   }
-
-//   /** Returns today's clock-in / clock-out status for the given employee */
-//   async getTodayStatus(employeeId: string, date: string): Promise<{
-//     hasClockedIn: boolean;
-//     hasClockedOut: boolean;
-//     record: Attendance | null;
-//   }> {
-//     const record = await this.attendanceModel.findOne({
-//       employeeId: new Types.ObjectId(employeeId),
-//       date,
-//     });
-
-//     return {
-//       hasClockedIn  : !!record?.inTime,
-//       hasClockedOut : !!record?.outTime,
-//       record        : record ?? null,
-//     };
-//   }
-
-//   async getEmployeeAttendance(
-//     employeeId: string,
-//     filters?: { month?: number; year?: number },
-//   ): Promise<Attendance[]> {
-//     const query: any = {
-//       employeeId: new Types.ObjectId(employeeId),
-//     };
-
-//     if (filters?.month && filters?.year) {
-//       const startDate = `${filters.year}-${String(filters.month).padStart(2, '0')}-01`;
-//       const endDate   = `${filters.year}-${String(filters.month).padStart(2, '0')}-31`;
-//       query.date = { $gte: startDate, $lte: endDate };
-//     }
-
-//     return this.attendanceModel.find(query).sort({ date: -1 }).exec();
-//   }
-
-//   async getAllAttendance(filters?: {
-//     employeeId?: string;
-//     startDate?: string;
-//     endDate?: string;
-//     month?: number;
-//     year?: number;
-//   }): Promise<Attendance[]> {
-//     const query: any = {};
-
-//     if (filters?.employeeId) {
-//       query.employeeId = new Types.ObjectId(filters.employeeId);
-//     }
-
-//     if (filters?.startDate && filters?.endDate) {
-//       query.date = { $gte: filters.startDate, $lte: filters.endDate };
-//     } else if (filters?.month && filters?.year) {
-//       const startDate = `${filters.year}-${String(filters.month).padStart(2, '0')}-01`;
-//       const endDate   = `${filters.year}-${String(filters.month).padStart(2, '0')}-31`;
-//       query.date = { $gte: startDate, $lte: endDate };
-//     }
-
-//     return this.attendanceModel.find(query).sort({ date: -1 }).exec();
-//   }
-
-//   async importAttendance(
-//     records: CreateAttendanceDto[],
-//     userId: string,
-//   ): Promise<Attendance[]> {
-//     // Re-calculate late/early for every imported record too
-//     const enriched = records.map((r) => {
-//       const inTime  = r.inTime  || '00:00';
-//       const outTime = r.outTime;
-//       const lateInfo = evaluateClockIn(inTime);
-
-//       let outFields: Partial<ReturnType<typeof evaluateClockOut>> = {};
-//       if (outTime) {
-//         outFields = evaluateClockOut(inTime, outTime, lateInfo.status);
-//       }
-
-//       return {
-//         ...r,
-//         employeeId   : new Types.ObjectId(r.employeeId),
-//         createdBy    : new Types.ObjectId(userId),
-//         isLate       : lateInfo.isLate,
-//         lateMinutes  : lateInfo.lateMinutes,
-//         lateHours    : lateInfo.lateHours,
-//         status       : outFields.status ?? lateInfo.status,
-//         workHours    : outFields.workHours ?? 0,
-//         overtimeHours: outFields.overtimeHours ?? 0,
-//         isEarlyDeparture     : outFields.isEarlyDeparture ?? false,
-//         earlyDepartureMinutes: outFields.earlyDepartureMinutes ?? 0,
-//       };
-//     });
-
-//     const created = await this.attendanceModel.insertMany(enriched);
-//     return created as any;
-//   }
-// }
