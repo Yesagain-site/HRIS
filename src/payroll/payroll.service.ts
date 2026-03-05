@@ -119,7 +119,7 @@ export class PayrollService {
         totalDays,
         offDays,
         leaveTaken: 0,
-        workedDays: totalDays, // ═══ AUTO-CALCULATED ═══
+        workedDays: totalDays,
         ctc: emp.baseSalary || 0,
         dailyRate: 0,
         hourlyRate: 0,
@@ -138,14 +138,14 @@ export class PayrollService {
         backPayment: 0,
         finalModification: 0,
         hrNotes: '',
-        absences: absences, // ═══ FROM ATTENDANCE ═══
+        absences: absences,
         unauthorizedAbsences: 0,
-        lateHours: lateHours, // ═══ FROM ATTENDANCE ═══
+        lateHours: lateHours,
         authAbsenceDeduction: 0,
         unauthAbsenceDeduction: 0,
         tardiness: 0,
         allDeductions: 0,
-        overtimeHours: overtimeHours, // ═══ FROM ATTENDANCE ═══
+        overtimeHours: overtimeHours,
         overtimeAmount: 0,
         netDeductions: 0,
         januaryNetSalary: 0,
@@ -215,7 +215,7 @@ export class PayrollService {
   }
 
   /**
-   * Update a single payroll entry
+   * Update a single payroll entry - PERMANENT FIX with TypeScript fixes
    */
   async updateEntry(
     entryId: string,
@@ -244,56 +244,127 @@ export class PayrollService {
     }
 
     console.log('📦 Before update:', {
+      unauthorizedAbsences: entry.unauthorizedAbsences,
+      unauthAbsenceDeduction: entry.unauthAbsenceDeduction,
       absences: entry.absences,
-      lateHours: entry.lateHours,
-      workedDays: entry.workedDays,
-      overtimeHours: entry.overtimeHours,
-      visaCost: entry.visaCost
+      authAbsenceDeduction: entry.authAbsenceDeduction,
+      extraFromManager: entry.extraFromManager
     });
 
-    // Store which fields were manually updated
+    // Store which fields were manually updated in THIS request
     const manuallyUpdatedFields = Object.keys(dto);
     console.log('✏️ Manually updated fields:', manuallyUpdatedFields);
 
-    // Apply user changes
+    // STEP 1: Apply ALL user changes from the DTO
     Object.assign(entry, dto);
     
-    console.log('📝 After field update:', {
+    console.log('📝 After applying user changes:', {
+      unauthorizedAbsences: entry.unauthorizedAbsences,
+      unauthAbsenceDeduction: entry.unauthAbsenceDeduction,
       absences: entry.absences,
-      lateHours: entry.lateHours,
-      workedDays: entry.workedDays,
-      overtimeHours: entry.overtimeHours,
-      visaCost: entry.visaCost
+      authAbsenceDeduction: entry.authAbsenceDeduction,
+      extraFromManager: entry.extraFromManager
     });
 
-    // Calculate everything based on current values
+    // STEP 2: Get the raw entry data for calculation
     const plainEntry = entry.toObject();
+    
+    // STEP 3: Calculate ALL fields based on CURRENT values
     const calculated = this.calculationService.calculateAll(plainEntry as any);
     
-    // 🟢 FIX: Only update fields that WEREN'T manually changed
+    // STEP 4: Get the original entry from database (before any changes) - FIXED NULL CHECK
+    const originalEntry = await this.payrollEntryModel.findById(entryId).lean();
+    
+    // FIX: Handle case when originalEntry is null
+    if (!originalEntry) {
+      throw new NotFoundException('Original payroll entry not found');
+    }
+    
+    // STEP 5: Create a fresh calculation based on original values
+    const freshCalculation = this.calculationService.calculateAll(originalEntry as any);
+    
+    // STEP 6: Build list of fields to preserve (manual edits)
+    const fieldsToPreserve = new Set<string>();
+    
+    // Add ALL manually updated fields from THIS request
+    manuallyUpdatedFields.forEach(field => fieldsToPreserve.add(field));
+    
+    // Check each field to see if it was manually edited in the past
+    Object.keys(calculated).forEach(key => {
+      // Skip if already in preserve set
+      if (fieldsToPreserve.has(key)) return;
+      
+      // Get values with proper type checking
+      const originalValue = (originalEntry as any)[key];
+      const freshValue = (freshCalculation as any)[key];
+      
+      // For numeric fields, check if DB value differs from calculated value
+      if (typeof originalValue === 'number' && typeof freshValue === 'number') {
+        // Allow small floating point differences (0.01 tolerance)
+        const diff = Math.abs(originalValue - freshValue);
+        if (diff > 0.01) {
+          // This field was manually edited in the past!
+          console.log(`🟢 Preserving historical manual edit: ${key} = ${originalValue}`);
+          fieldsToPreserve.add(key);
+        }
+      }
+    });
+    
+    console.log('🛡️ Fields being preserved:', Array.from(fieldsToPreserve));
+
+    // STEP 7: Apply calculated values, but PRESERVE all manually edited fields
     for (const key of Object.keys(calculated)) {
-      if (!manuallyUpdatedFields.includes(key)) {
-        entry[key] = calculated[key];
+      // Skip fields that should be preserved (manual edits)
+      if (fieldsToPreserve.has(key)) {
+        continue;
+      }
+      
+      // Get the calculated value with proper type handling
+      const calculatedValue = (calculated as any)[key];
+      
+      // SPECIAL HANDLING: If source field was updated, update derived field
+      if (key === 'unauthAbsenceDeduction' && manuallyUpdatedFields.includes('unauthorizedAbsences')) {
+        (entry as any)[key] = calculatedValue;
+      }
+      else if (key === 'authAbsenceDeduction' && manuallyUpdatedFields.includes('absences')) {
+        (entry as any)[key] = calculatedValue;
+      }
+      else if (key === 'overtimeAmount' && manuallyUpdatedFields.includes('overtimeHours')) {
+        (entry as any)[key] = calculatedValue;
+      }
+      else if (key === 'offDayAmount' && manuallyUpdatedFields.includes('offDaysWorked')) {
+        (entry as any)[key] = calculatedValue;
+      }
+      else if (key === 'holidayAmount' && manuallyUpdatedFields.includes('holidayWorked')) {
+        (entry as any)[key] = calculatedValue;
+      }
+      else if (key === 'total' && (
+        manuallyUpdatedFields.includes('workedDays') ||
+        manuallyUpdatedFields.includes('offDaysWorked') ||
+        manuallyUpdatedFields.includes('holidayWorked') ||
+        manuallyUpdatedFields.includes('leaveSalary') ||
+        manuallyUpdatedFields.includes('cashAdvance')
+      )) {
+        (entry as any)[key] = calculatedValue;
+      }
+      else if (!fieldsToPreserve.has(key)) {
+        // For all other fields, use calculated value
+        (entry as any)[key] = calculatedValue;
       }
     }
     
-    console.log('🧮 After calculation (preserving manual edits):', {
+    console.log('🧮 After intelligent merge:', {
+      unauthorizedAbsences: entry.unauthorizedAbsences,
+      unauthAbsenceDeduction: entry.unauthAbsenceDeduction,
       absences: entry.absences,
-      lateHours: entry.lateHours,
-      workedDays: entry.workedDays,
-      overtimeHours: entry.overtimeHours,
-      visaCost: entry.visaCost,
-      dailyRate: entry.dailyRate,
+      authAbsenceDeduction: entry.authAbsenceDeduction,
+      extraFromManager: entry.extraFromManager,
       total: entry.total
     });
 
+    // STEP 8: Save to database
     const savedEntry = await entry.save();
-    console.log('✅ Saved to database:', {
-      id: savedEntry._id,
-      absences: savedEntry.absences,
-      lateHours: savedEntry.lateHours,
-      workedDays: savedEntry.workedDays
-    });
+    console.log('✅ Saved to database with ID:', savedEntry._id);
 
     return savedEntry;
   }
@@ -1052,4 +1123,1129 @@ export class PayrollService {
       sample: updates.slice(0, 5)
     };
   }
+  // 
 }
+
+// import { Injectable, NotFoundException } from '@nestjs/common';
+// import { InjectModel } from '@nestjs/mongoose';
+// import { Model, Types } from 'mongoose';
+// import { PayrollPeriod } from './schemas/payroll-period.schema';
+// import { PayrollEntry } from './schemas/payroll-entry.schema';
+// import { BadRequestException } from '@nestjs/common';
+// import { UpdatePayrollEntryDto } from './dto/update-payroll-entry.dto';
+// import { PayrollCalculationService } from './payroll-calculation.service';
+// import { Employee } from '../employees/schemas/employee.schema';
+// import { Attendance } from '../attendance/schemas/attendance.schema';
+
+// @Injectable()
+// export class PayrollService {
+//   constructor(
+//     @InjectModel(PayrollPeriod.name) private payrollPeriodModel: Model<PayrollPeriod>,
+//     @InjectModel(PayrollEntry.name) private payrollEntryModel: Model<PayrollEntry>,
+//     @InjectModel(Employee.name) private employeeModel: Model<Employee>,
+//     @InjectModel(Attendance.name) private attendanceModel: Model<Attendance>,
+//     private calculationService: PayrollCalculationService,
+//   ) {}
+
+//   async initializePayrollEntries(
+//     periodId: string,
+//     month: number,
+//     year: number,
+//   ): Promise<PayrollEntry[]> {
+//     const periodObjectId = new Types.ObjectId(periodId);
+
+//     // Check if entries already exist
+//     const existing = await this.payrollEntryModel.find({
+//       payrollPeriodId: periodObjectId,
+//     });
+
+//     if (existing.length > 0) {
+//       return existing;
+//     }
+
+//     const employees = await this.employeeModel
+//       .find({
+//         workStatus: 'Active',
+//       })
+//       .sort({ firstName: 1 });
+
+//     const entries: PayrollEntry[] = [];
+//     const totalDays = new Date(year, month, 0).getDate();
+//     const offDays = this.countWeekendDays(year, month);
+
+//     // ═══ FIXED: FETCH MONTHLY ATTENDANCE SUMMARIES ═══
+//     console.log(`🔍 Fetching attendance summaries for ${month}/${year}`);
+    
+//     // Make sure we're querying with the correct month/year
+//     const monthlySummaries = await this.attendanceModel.find({
+//       recordType: 'monthly_summary',
+//       month: month,  // Explicitly set
+//       year: year,    // Explicitly set
+//     });
+
+//     console.log(`📊 Found ${monthlySummaries.length} attendance summaries`);
+
+//     // Log the first summary to verify data
+//     if (monthlySummaries.length > 0) {
+//       console.log('📝 First attendance summary:', {
+//         employeeId: monthlySummaries[0].employeeId,
+//         staffId: monthlySummaries[0].staffId,
+//         absences: monthlySummaries[0].absences,
+//         lateHours: monthlySummaries[0].lateHours,
+//         overtimeHours: monthlySummaries[0].overtimeHours
+//       });
+//     }
+
+//     // Create a map for quick lookup - using string comparison
+//     const summaryMap = new Map();
+//     for (const summary of monthlySummaries) {
+//       const empId = summary.employeeId.toString();
+//       summaryMap.set(empId, summary);
+//       console.log(`📌 Mapped employee ${empId} to attendance:`, {
+//         absences: summary.absences,
+//         lateHours: summary.lateHours
+//       });
+//     }
+
+//     for (let i = 0; i < employees.length; i++) {
+//       const emp = employees[i];
+//       const empIdStr = emp._id.toString();
+
+//       // ═══ FIXED: GET ATTENDANCE DATA FOR THIS EMPLOYEE ═══
+//       const attendanceSummary = summaryMap.get(empIdStr);
+
+//       // Log for debugging
+//       if (attendanceSummary) {
+//         console.log(`✅ Found attendance for ${emp.firstName} ${emp.lastName}:`, {
+//           absences: attendanceSummary.absences,
+//           lateHours: attendanceSummary.lateHours
+//         });
+//       } else {
+//         console.log(`❌ No attendance found for ${emp.firstName} ${emp.lastName} (${emp.staffId})`);
+//       }
+
+//       // Calculate values from attendance - with proper defaults
+//       const absences = attendanceSummary?.absences || 0;
+//       const lateHours = attendanceSummary?.lateHours || 0;
+//       const overtimeHours = attendanceSummary?.overtimeHours || 0;
+
+//       // Log what we're setting
+//       console.log(`📝 Setting ${emp.firstName} ${emp.lastName}: absences=${absences}, lateHours=${lateHours}`);
+
+//       const entry = new this.payrollEntryModel({
+//         payrollPeriodId: periodObjectId,
+//         employeeId: emp._id,
+//         sr: i + 1,
+//         staffId: emp.staffId,
+//         name: `${emp.firstName || ''} ${emp.middleName || ''} ${emp.lastName || ''}`
+//           .replace(/\s+/g, ' ')
+//           .trim(),
+//         designation: emp.designation || '',
+//         department: emp.department || '',
+//         month: this.getMonthName(month),
+//         year,
+//         totalDays,
+//         offDays,
+//         leaveTaken: 0,
+//         workedDays: totalDays, // ═══ AUTO-CALCULATED ═══
+//         ctc: emp.baseSalary || 0,
+//         dailyRate: 0,
+//         hourlyRate: 0,
+//         offDaysWorked: 0,
+//         offDayAmount: 0,
+//         holidayWorked: 0,
+//         holidayAmount: 0,
+//         leaveSalary: 0,
+//         cashAdvance: 0,
+//         penaltyPoints: 0,
+//         total: 0,
+//         visaCost: 0,
+//         fines: 0,
+//         cleaningFees: 0,
+//         extraFromManager: 0,
+//         backPayment: 0,
+//         finalModification: 0,
+//         hrNotes: '',
+//         absences: absences, // ═══ FROM ATTENDANCE ═══
+//         unauthorizedAbsences: 0,
+//         lateHours: lateHours, // ═══ FROM ATTENDANCE ═══
+//         authAbsenceDeduction: 0,
+//         unauthAbsenceDeduction: 0,
+//         tardiness: 0,
+//         allDeductions: 0,
+//         overtimeHours: overtimeHours, // ═══ FROM ATTENDANCE ═══
+//         overtimeAmount: 0,
+//         netDeductions: 0,
+//         januaryNetSalary: 0,
+//         targetRate: emp.targetRate || 0,
+//         totalJanuarySalary: 0,
+//         beforeOT: 0,
+//         ot: 0,
+//         totalCalculated: 0,
+//         dfrnce: 0,
+//         deductions: 0,
+//         inDays: 0,
+//         isCalculated: false,
+//         isEditable: true,
+//         createdAt: new Date(),
+//         updatedAt: new Date(),
+//       });
+
+//       const savedEntry = await entry.save();
+//       entries.push(savedEntry);
+//     }
+
+//     console.log(`✅ Created ${entries.length} payroll entries with attendance data`);
+//     return entries;
+//   }
+
+//   /**
+//    * Helper method to count weekend days
+//    */
+//   private countWeekendDays(year: number, month: number): number {
+//     const date = new Date(year, month - 1, 1);
+//     const daysInMonth = new Date(year, month, 0).getDate();
+//     let weekendCount = 0;
+
+//     for (let day = 1; day <= daysInMonth; day++) {
+//       date.setDate(day);
+//       const dayOfWeek = date.getDay();
+
+//       if (dayOfWeek === 0) {
+//         weekendCount++;
+//       }
+//     }
+
+//     return weekendCount;
+//   }
+
+//   /**
+//    * Find payroll by month and year
+//    */
+//   async findByMonthYear(month: number, year: number): Promise<any> {
+//     const period = await this.payrollPeriodModel.findOne({ month, year });
+
+//     if (!period) {
+//       return null;
+//     }
+
+//     const entries = await this.payrollEntryModel
+//       .find({
+//         payrollPeriodId: period._id,
+//       })
+//       .sort({ sr: 1 });
+
+//     return {
+//       _id: period._id,
+//       period,
+//       entries,
+//     };
+//   }
+
+//   /**
+//    * Update a single payroll entry
+//    */
+//   async updateEntry(
+//   entryId: string,
+//   dto: UpdatePayrollEntryDto,
+// ): Promise<PayrollEntry> {
+//   console.log('🔵 UPDATE ENTRY CALLED:', { entryId, dto });
+
+//   if (!entryId || entryId === 'undefined') {
+//     throw new BadRequestException('Invalid entry ID');
+//   }
+
+//   if (!Types.ObjectId.isValid(entryId)) {
+//     throw new BadRequestException('Invalid ObjectId format');
+//   }
+
+//   const entry = await this.payrollEntryModel.findById(entryId);
+  
+//   if (!entry) {
+//     throw new NotFoundException('Payroll entry not found');
+//   }
+
+//   // CRITICAL: Check if period is generated
+//   const period = await this.payrollPeriodModel.findById(entry.payrollPeriodId);
+//   if (period && period.status === 'generated') {
+//     throw new BadRequestException('Cannot update generated payroll');
+//   }
+
+//   console.log('📦 Before update:', {
+//     unauthorizedAbsences: entry.unauthorizedAbsences,
+//     unauthAbsenceDeduction: entry.unauthAbsenceDeduction,
+//     absences: entry.absences,
+//     authAbsenceDeduction: entry.authAbsenceDeduction,
+//     extraFromManager: entry.extraFromManager
+//   });
+
+//   // Store which fields were manually updated in THIS request
+//   const manuallyUpdatedFields = Object.keys(dto);
+//   console.log('✏️ Manually updated fields:', manuallyUpdatedFields);
+
+//   // STEP 1: Apply ALL user changes from the DTO
+//   // This overwrites ONLY the fields sent from frontend
+//   Object.assign(entry, dto);
+  
+//   console.log('📝 After applying user changes:', {
+//     unauthorizedAbsences: entry.unauthorizedAbsences,
+//     unauthAbsenceDeduction: entry.unauthAbsenceDeduction,
+//     absences: entry.absences,
+//     authAbsenceDeduction: entry.authAbsenceDeduction,
+//     extraFromManager: entry.extraFromManager
+//   });
+
+//   // STEP 2: Get the raw entry data for calculation
+//   const plainEntry = entry.toObject();
+  
+//   // STEP 3: Calculate ALL fields based on CURRENT values
+//   // This uses the calculation service which applies all formulas
+//   const calculated = this.calculationService.calculateAll(plainEntry as any);
+  
+//   // STEP 4: ⭐ INTELLIGENT FIELD MERGING ⭐
+//   // This is the key fix that preserves ALL manual edits forever
+  
+//   // Create a map of fields that should NOT be overwritten
+//   const fieldsToPreserve = new Set<string>();
+  
+//   // Add ALL manually updated fields from THIS request
+//   manuallyUpdatedFields.forEach(field => fieldsToPreserve.add(field));
+  
+//   // Also check for dependent fields that might have been manually edited in the PAST
+//   // We can detect these by comparing with database values
+  
+//   // Get the original entry from database (before any changes)
+//   const originalEntry = await this.payrollEntryModel.findById(entryId).lean();
+  
+//   // If a field in the database doesn't match what would be calculated,
+//   // it means it was manually edited at some point and should be preserved
+//   const freshCalculation = this.calculationService.calculateAll(originalEntry as any);
+  
+//   // Check each field to see if it was manually edited in the past
+//   Object.keys(calculated).forEach(key => {
+//     // Skip if already in preserve set
+//     if (fieldsToPreserve.has(key)) return;
+    
+//     // For numeric fields, check if DB value differs from calculated value
+//     if (typeof originalEntry[key] === 'number' && typeof freshCalculation[key] === 'number') {
+//       // Allow small floating point differences (0.01 tolerance)
+//       const diff = Math.abs(originalEntry[key] - freshCalculation[key]);
+//       if (diff > 0.01) {
+//         // This field was manually edited in the past!
+//         console.log(`🟢 Preserving historical manual edit: ${key} = ${originalEntry[key]}`);
+//         fieldsToPreserve.add(key);
+//       }
+//     }
+//   });
+  
+//   console.log('🛡️ Fields being preserved:', Array.from(fieldsToPreserve));
+
+//   // STEP 5: Apply calculated values, but PRESERVE all manually edited fields
+//   for (const key of Object.keys(calculated)) {
+//     // Skip fields that should be preserved (manual edits)
+//     if (fieldsToPreserve.has(key)) {
+//       continue;
+//     }
+    
+//     // SPECIAL HANDLING: If source field was updated, update derived field
+//     if (key === 'unauthAbsenceDeduction' && manuallyUpdatedFields.includes('unauthorizedAbsences')) {
+//       entry[key] = calculated[key];
+//     }
+//     else if (key === 'authAbsenceDeduction' && manuallyUpdatedFields.includes('absences')) {
+//       entry[key] = calculated[key];
+//     }
+//     else if (key === 'overtimeAmount' && manuallyUpdatedFields.includes('overtimeHours')) {
+//       entry[key] = calculated[key];
+//     }
+//     else if (key === 'offDayAmount' && manuallyUpdatedFields.includes('offDaysWorked')) {
+//       entry[key] = calculated[key];
+//     }
+//     else if (key === 'holidayAmount' && manuallyUpdatedFields.includes('holidayWorked')) {
+//       entry[key] = calculated[key];
+//     }
+//     else if (key === 'total' && (
+//       manuallyUpdatedFields.includes('workedDays') ||
+//       manuallyUpdatedFields.includes('offDaysWorked') ||
+//       manuallyUpdatedFields.includes('holidayWorked') ||
+//       manuallyUpdatedFields.includes('leaveSalary') ||
+//       manuallyUpdatedFields.includes('cashAdvance')
+//     )) {
+//       entry[key] = calculated[key];
+//     }
+//     else if (!fieldsToPreserve.has(key)) {
+//       // For all other fields, use calculated value
+//       entry[key] = calculated[key];
+//     }
+//   }
+  
+//   console.log('🧮 After intelligent merge:', {
+//     unauthorizedAbsences: entry.unauthorizedAbsences,
+//     unauthAbsenceDeduction: entry.unauthAbsenceDeduction,
+//     absences: entry.absences,
+//     authAbsenceDeduction: entry.authAbsenceDeduction,
+//     extraFromManager: entry.extraFromManager,
+//     total: entry.total
+//   });
+
+//   // STEP 6: Save to database
+//   const savedEntry = await entry.save();
+//   console.log('✅ Saved to database with ID:', savedEntry._id);
+
+//   return savedEntry;
+// }
+
+//   /**
+//    * Calculate a single entry
+//    */
+//   async calculateEntry(entryId: string): Promise<PayrollEntry> {
+//     const entry = await this.payrollEntryModel.findById(entryId);
+
+//     if (!entry) {
+//       throw new NotFoundException('Payroll entry not found');
+//     }
+
+//     const plainEntry = entry.toObject();
+//     const calculated = this.calculationService.calculateAll(plainEntry as any);
+//     Object.assign(entry, calculated);
+
+//     return entry.save();
+//   }
+
+//   /**
+//    * Calculate all entries for a period
+//    */
+//   async calculateAllEntries(periodId: string): Promise<PayrollEntry[]> {
+//     const entries = await this.payrollEntryModel.find({
+//       payrollPeriodId: periodId,
+//     });
+
+//     for (const entry of entries) {
+//       const plainEntry = entry.toObject();
+//       const calculated = this.calculationService.calculateAll(plainEntry as any);
+//       Object.assign(entry, calculated);
+//       await entry.save();
+//     }
+
+//     await this.payrollPeriodModel.findByIdAndUpdate(periodId, {
+//       status: 'calculated',
+//       updatedAt: new Date(),
+//     });
+
+//     return this.payrollEntryModel
+//       .find({ payrollPeriodId: periodId })
+//       .sort({ sr: 1 });
+//   }
+
+//   /**
+//    * Generate payroll (finalize)
+//    */
+//   async generatePayroll(periodId: string, userId: string): Promise<any> {
+//     // Try to find period with both string and ObjectId
+//     let period;
+//     try {
+//       period = await this.payrollPeriodModel.findById(periodId);
+//     } catch (err) {
+//       console.log('Error finding period by ID, trying with ObjectId conversion');
+//       period = await this.payrollPeriodModel.findById(
+//         new Types.ObjectId(periodId),
+//       );
+//     }
+
+//     if (!period) {
+//       throw new NotFoundException('Payroll period not found');
+//     }
+
+//     // If already generated, prevent re-generation
+//     if (period.status === 'generated') {
+//       throw new BadRequestException('Payroll has already been generated');
+//     }
+
+//     // Get current entries
+//     let entries = await this.payrollEntryModel.find({
+//       payrollPeriodId: period._id,
+//     });
+
+//     // Try multiple query formats if empty
+//     if (entries.length === 0) {
+//       entries = await this.payrollEntryModel.find({
+//         payrollPeriodId: periodId,
+//       });
+//     }
+
+//     if (entries.length === 0) {
+//       try {
+//         entries = await this.payrollEntryModel.find({
+//           payrollPeriodId: new Types.ObjectId(periodId),
+//         });
+//       } catch (err) {
+//         console.log('Error querying with ObjectId:', err);
+//       }
+//     }
+
+//     if (entries.length === 0) {
+//       throw new BadRequestException('No payroll entries found');
+//     }
+
+//     // Calculate all entries
+//     for (const entry of entries) {
+//       const plainEntry = entry.toObject();
+//       const calculated = this.calculationService.calculateAll(plainEntry as any);
+//       Object.assign(entry, calculated);
+//       entry.isEditable = false;
+//       await entry.save();
+//     }
+
+//     // Update period status
+//     period.status = 'generated';
+//     period.updatedBy = new Types.ObjectId(userId);
+//     period.updatedAt = new Date();
+//     await period.save();
+
+//     return {
+//       message: 'Payroll generated successfully',
+//       periodId: period._id,
+//       status: 'generated',
+//       entryCount: entries.length,
+//     };
+//   }
+
+//   /**
+//    * Delete payroll period
+//    */
+//   async deletePayrollPeriod(periodId: string): Promise<void> {
+//     await this.payrollEntryModel.deleteMany({ payrollPeriodId: periodId });
+//     await this.payrollPeriodModel.findByIdAndDelete(periodId);
+//   }
+
+//   /**
+//    * Delete by month and year
+//    */
+//   async deleteByMonthYear(month: number, year: number): Promise<void> {
+//     const period = await this.payrollPeriodModel.findOne({ month, year });
+//     if (period) {
+//       await this.deletePayrollPeriod(period._id.toString());
+//     }
+//   }
+
+//   /**
+//    * Delete a single payroll entry
+//    */
+//   async deleteEntry(entryId: string): Promise<void> {
+//     if (!entryId || entryId === 'undefined') {
+//       throw new BadRequestException('Invalid entry ID');
+//     }
+
+//     if (!Types.ObjectId.isValid(entryId)) {
+//       throw new BadRequestException('Invalid ObjectId format');
+//     }
+
+//     const entry = await this.payrollEntryModel.findById(entryId);
+
+//     if (!entry) {
+//       throw new NotFoundException('Payroll entry not found');
+//     }
+
+//     // Check if the period is generated
+//     const period = await this.payrollPeriodModel.findById(
+//       entry.payrollPeriodId,
+//     );
+
+//     if (period && period.status === 'generated') {
+//       throw new BadRequestException(
+//         'Cannot delete entry from a generated payroll period',
+//       );
+//     }
+
+//     await this.payrollEntryModel.findByIdAndDelete(entryId);
+//   }
+
+//   /**
+//    * Get month name from number
+//    */
+//   private getMonthName(month: number): string {
+//     const months = [
+//       'January',
+//       'February',
+//       'March',
+//       'April',
+//       'May',
+//       'June',
+//       'July',
+//       'August',
+//       'September',
+//       'October',
+//       'November',
+//       'December',
+//     ];
+//     return months[month - 1];
+//   }
+
+//   /**
+//    * Create period from settings
+//    */
+//   async createPeriodFromSettings(dto: any, userId: string): Promise<PayrollPeriod> {
+//     // Check if period already exists
+//     const existing = await this.payrollPeriodModel.findOne({
+//       month: dto.month,
+//       year: dto.year,
+//     });
+
+//     if (existing) {
+//       throw new BadRequestException('Payroll period already exists');
+//     }
+
+//     // Calculate month name and dates if not provided
+//     const monthName =
+//       dto.monthName ||
+//       new Date(2000, dto.month - 1, 1).toLocaleString('default', {
+//         month: 'long',
+//       });
+
+//     const startDate =
+//       dto.startDate ||
+//       `${dto.year}-${String(dto.month).padStart(2, '0')}-01`;
+//     const lastDay = new Date(dto.year, dto.month, 0).getDate();
+//     const endDate =
+//       dto.endDate ||
+//       `${dto.year}-${String(dto.month).padStart(2, '0')}-${lastDay}`;
+
+//     const period = new this.payrollPeriodModel({
+//       month: dto.month,
+//       year: dto.year,
+//       monthName,
+//       startDate,
+//       endDate,
+//       status: 'draft',
+//       createdInSettings: true,
+//       isActive: true,
+//       createdBy: userId,
+//       createdAt: new Date(),
+//     });
+
+//     return period.save();
+//   }
+
+//   /**
+//    * Get or create payroll period
+//    */
+//   async getOrCreatePayrollPeriod(
+//     month: number,
+//     year: number,
+//     userId: string,
+//   ): Promise<any> {
+//     // Find the period with exact month and year
+//     let period = await this.payrollPeriodModel.findOne({
+//       month: month,
+//       year: year,
+//     });
+
+//     if (!period) {
+//       console.log(`❌ No period found for ${month}/${year}`);
+//       return { period: null, entries: [] };
+//     }
+
+//     // Find entries using ObjectId
+//     const entries = await this.payrollEntryModel
+//       .find({
+//         payrollPeriodId: period._id,
+//       })
+//       .sort({ sr: 1 });
+
+//     // Verify entries match the expected month/year
+//     if (entries.length > 0) {
+//       const firstEntry = entries[0];
+//       if (
+//         firstEntry.month !== period.monthName ||
+//         firstEntry.year !== period.year
+//       ) {
+//         console.error(
+//           `❌ Entry month/year mismatch! Period: ${period.monthName} ${period.year}, Entry: ${firstEntry.month} ${firstEntry.year}`,
+//         );
+//       }
+//     }
+
+//     // If entries exist, return them
+//     if (entries.length > 0) {
+//       return { period, entries };
+//     }
+
+//     // No entries exist - create them WITH ATTENDANCE DATA
+//     const newEntries = await this.initializePayrollEntries(
+//       period._id.toString(),
+//       month,
+//       year,
+//     );
+//     return { period, entries: newEntries };
+//   }
+
+//   /**
+//    * Get only settings-created periods
+//    */
+//   async getSettingsPeriods(): Promise<PayrollPeriod[]> {
+//     return this.payrollPeriodModel
+//       .find({
+//         createdInSettings: true,
+//         isActive: true,
+//       })
+//       .sort({ year: -1, month: -1 });
+//   }
+
+//   /**
+//    * Delete settings period
+//    */
+//   async deleteSettingsPeriod(id: string): Promise<void> {
+//     const period = await this.payrollPeriodModel.findById(id);
+
+//     if (!period) {
+//       throw new NotFoundException('Period not found');
+//     }
+
+//     // Check if this period has generated payroll data
+//     const entries = await this.payrollEntryModel.find({
+//       payrollPeriodId: id,
+//     });
+
+//     if (entries.length > 0 && period.status === 'generated') {
+//       throw new BadRequestException(
+//         'Cannot delete a period with generated payroll data',
+//       );
+//     }
+
+//     await this.payrollPeriodModel.findByIdAndDelete(id);
+//     await this.payrollEntryModel.deleteMany({ payrollPeriodId: id });
+//   }
+
+//   /**
+//    * Create a single entry
+//    */
+//   async createEntry(dto: any, userId: string): Promise<PayrollEntry> {
+//     // Remove any temporary id if present
+//     const { id, ...entryData } = dto;
+
+//     // Ensure employeeId is ObjectId if it exists
+//     if (entryData.employeeId) {
+//       entryData.employeeId = new Types.ObjectId(entryData.employeeId);
+//     }
+
+//     // Ensure payrollPeriodId is ObjectId
+//     if (entryData.payrollPeriodId) {
+//       entryData.payrollPeriodId = new Types.ObjectId(entryData.payrollPeriodId);
+//     }
+
+//     const entry = new this.payrollEntryModel({
+//       ...entryData,
+//       createdBy: new Types.ObjectId(userId),
+//       createdAt: new Date(),
+//       updatedAt: new Date(),
+//     });
+
+//     return entry.save();
+//   }
+
+//   /**
+//    * Get entries by period
+//    */
+//   async getEntriesByPeriod(periodId: string): Promise<any[]> {
+//     console.log('🔍 Backend: Fetching entries for period:', periodId);
+
+//     let periodObjectId: Types.ObjectId;
+
+//     // Convert to ObjectId
+//     try {
+//       periodObjectId = new Types.ObjectId(periodId);
+//     } catch (error) {
+//       console.error('❌ Invalid period ID format:', periodId);
+//       return [];
+//     }
+
+//     // Use .lean() to get plain JavaScript objects
+//     const entries = await this.payrollEntryModel
+//       .find({ payrollPeriodId: periodObjectId })
+//       .sort({ sr: 1 })
+//       .lean()
+//       .exec();
+
+//     console.log(`✅ Backend: Found ${entries.length} entries`);
+
+//     // Convert all ObjectIds to strings BEFORE sending to frontend
+//     const plainEntries = entries.map((entry) => ({
+//       ...entry,
+//       _id: entry._id.toString(),
+//       employeeId: entry.employeeId?.toString() || null,
+//       payrollPeriodId: entry.payrollPeriodId?.toString() || null,
+//     }));
+
+//     console.log('📤 Backend: First entry being sent:', {
+//       name: plainEntries[0]?.name,
+//       employeeId: plainEntries[0]?.employeeId,
+//       employeeIdType: typeof plainEntries[0]?.employeeId,
+//     });
+
+//     return plainEntries;
+//   }
+
+//   /**
+//    * Get all payrolls with filters
+//    */
+//   async getAllPayrolls(filters?: {
+//     year?: number;
+//     month?: number;
+//     isGenerated?: boolean;
+//   }): Promise<PayrollPeriod[]> {
+//     const query: any = {};
+
+//     if (filters?.year) {
+//       query.year = filters.year;
+//     }
+
+//     if (filters?.month) {
+//       query.month = filters.month;
+//     }
+
+//     if (filters?.isGenerated !== undefined) {
+//       query.status = filters.isGenerated ? 'generated' : { $ne: 'generated' };
+//     }
+
+//     return this.payrollPeriodModel.find(query).sort({ year: -1, month: -1 }).exec();
+//   }
+
+//   // ═══════════════════════════════════════════════════════════════════════════
+//   // ═══ ATTENDANCE SYNC METHODS ═══════════════════════════════════════════════
+//   // ═══════════════════════════════════════════════════════════════════════════
+
+//   /**
+//    * Update payroll entries with attendance data
+//    * Used to sync/refresh attendance data
+//    */
+//   async updatePayrollEntriesWithAttendance(
+//     periodId: string,
+//     month: number,
+//     year: number,
+//   ): Promise<number> {
+//     const entries = await this.payrollEntryModel.find({
+//       payrollPeriodId: new Types.ObjectId(periodId),
+//     });
+
+//     if (entries.length === 0) {
+//       return 0;
+//     }
+
+//     // Fetch all monthly attendance summaries for this period
+//     const monthlySummaries = await this.attendanceModel.find({
+//       recordType: 'monthly_summary',
+//       month,
+//       year,
+//     });
+
+//     // Create a map for quick lookup
+//     const summaryMap = new Map();
+//     for (const summary of monthlySummaries) {
+//       summaryMap.set(summary.employeeId.toString(), summary);
+//     }
+
+//     let updatedCount = 0;
+//     const totalDays = new Date(year, month, 0).getDate();
+
+//     for (const entry of entries) {
+//       const attendanceSummary = summaryMap.get(entry.employeeId.toString());
+
+//       if (attendanceSummary) {
+//         entry.absences = attendanceSummary.absences || 0;
+//         entry.lateHours = attendanceSummary.lateHours || 0;
+//         entry.overtimeHours = attendanceSummary.overtimeHours || 0;
+//         entry.workedDays = totalDays - entry.absences;
+
+//         await entry.save();
+//         updatedCount++;
+//       }
+//     }
+
+//     return updatedCount;
+//   }
+
+//   /**
+//    * Sync attendance data to payroll
+//    * Endpoint method to re-sync if attendance data is updated
+//    */
+//   async syncAttendanceToPayroll(
+//     periodId: string,
+//     month: number,
+//     year: number,
+//   ): Promise<{
+//     success: boolean;
+//     updated: number;
+//     message: string;
+//   }> {
+//     const period = await this.payrollPeriodModel.findById(periodId);
+
+//     if (!period) {
+//       throw new NotFoundException('Payroll period not found');
+//     }
+
+//     if (period.status === 'generated') {
+//       throw new BadRequestException(
+//         'Cannot sync attendance for generated payroll',
+//       );
+//     }
+
+//     const updated = await this.updatePayrollEntriesWithAttendance(
+//       periodId,
+//       month,
+//       year,
+//     );
+
+//     return {
+//       success: true,
+//       updated,
+//       message: `Successfully synced attendance data for ${updated} employees`,
+//     };
+//   }
+
+//   /**
+//  * ONE-TIME FIX: Update all payroll entries with attendance data from Excel
+//  * This will directly update the absences, lateHours, and overtimeHours
+//   */
+//   async fixUpdateFromExcel(month: number, year: number): Promise<any> {
+//     console.log(`🔧 FIX: Updating payroll entries with Excel attendance data for ${month}/${year}`);
+    
+//     // Find the payroll period
+//     const period = await this.payrollPeriodModel.findOne({ month, year });
+    
+//     if (!period) {
+//       throw new NotFoundException(`No payroll period found for ${month}/${year}`);
+//     }
+    
+//     // Get all entries for this period
+//     const entries = await this.payrollEntryModel.find({
+//       payrollPeriodId: period._id
+//     });
+    
+//     console.log(`📊 Found ${entries.length} payroll entries to update`);
+    
+//     // Get all attendance summaries for this month/year
+//     const summaries = await this.attendanceModel.find({
+//       recordType: 'monthly_summary',
+//       month,
+//       year
+//     });
+    
+//     console.log(`📊 Found ${summaries.length} attendance summaries from database`);
+    
+//     // Create a map for quick lookup
+//     const summaryMap = new Map();
+//     summaries.forEach(s => {
+//       const empId = s.employeeId.toString();
+//       summaryMap.set(empId, s);
+//       console.log(`📌 Summary for ${s.staffId} (${s.employeeName}): absences=${s.absences}, lateHours=${s.lateHours}, overtime=${s.overtimeHours}`);
+//     });
+    
+//     // Track updates
+//     let updatedCount = 0;
+//     let notFoundCount = 0;
+//     const updates: any[] = [];
+    
+//     const totalDays = new Date(year, month, 0).getDate();
+    
+//     for (const entry of entries) {
+//       const empIdStr = entry.employeeId?.toString();
+//       const summary = summaryMap.get(empIdStr);
+      
+//       if (summary) {
+//         // Store old values for logging
+//         const oldAbsences = entry.absences;
+//         const oldLateHours = entry.lateHours;
+//         const oldOvertimeHours = entry.overtimeHours;
+        
+//         console.log(`✅ Updating ${entry.name} (${entry.staffId}):`);
+//         console.log(`   - absences: ${oldAbsences} → ${summary.absences}`);
+//         console.log(`   - lateHours: ${oldLateHours} → ${summary.lateHours}`);
+//         console.log(`   - overtimeHours: ${oldOvertimeHours} → ${summary.overtimeHours}`);
+        
+//         // Update the entry
+//         entry.absences = summary.absences || 0;
+//         entry.lateHours = summary.lateHours || 0;
+//         entry.overtimeHours = summary.overtimeHours || 0;
+//         entry.workedDays = totalDays - entry.absences;
+        
+//         // Save the entry
+//         await entry.save();
+//         updatedCount++;
+        
+//         updates.push({
+//           staffId: entry.staffId,
+//           name: entry.name,
+//           old: {
+//             absences: oldAbsences,
+//             lateHours: oldLateHours,
+//             overtimeHours: oldOvertimeHours
+//           },
+//           new: {
+//             absences: entry.absences,
+//             lateHours: entry.lateHours,
+//             overtimeHours: entry.overtimeHours
+//           }
+//         });
+//       } else {
+//         console.log(`❌ No attendance found for ${entry.name} (${entry.staffId})`);
+//         notFoundCount++;
+//       }
+//     }
+    
+//     console.log(`✅ Fix complete: Updated ${updatedCount} entries, ${notFoundCount} entries had no attendance data`);
+    
+//     return {
+//       success: true,
+//       message: `Updated ${updatedCount} of ${entries.length} payroll entries with attendance data`,
+//       periodId: period._id,
+//       month,
+//       year,
+//       updatedCount,
+//       notFoundCount,
+//       totalEntries: entries.length,
+//       updates: updates.slice(0, 10) // Show first 10 updates as sample
+//     };
+//   }
+
+//   /**
+//    * DEBUG: Check payroll entries vs attendance data
+//    */
+//   async debugCheckData(month: number, year: number): Promise<any> {
+//     console.log(`🔍 DEBUG: Checking data for ${month}/${year}`);
+    
+//     // Find the payroll period
+//     const period = await this.payrollPeriodModel.findOne({ month, year });
+    
+//     if (!period) {
+//       return { error: 'No payroll period found' };
+//     }
+    
+//     // Get payroll entries
+//     const entries = await this.payrollEntryModel.find({
+//       payrollPeriodId: period._id
+//     });
+    
+//     // Get attendance summaries
+//     const summaries = await this.attendanceModel.find({
+//       recordType: 'monthly_summary',
+//       month,
+//       year
+//     });
+    
+//     // Create a map of attendance by employeeId
+//     const summaryMap = new Map();
+//     summaries.forEach(s => {
+//       summaryMap.set(s.employeeId.toString(), s);
+//     });
+    
+//     // Compare each entry
+//     const comparisons: any[] = [];
+//     let mismatches = 0;
+    
+//     for (const entry of entries) {
+//       const summary = summaryMap.get(entry.employeeId.toString());
+      
+//       if (summary) {
+//         const absenceMatch = entry.absences === (summary.absences || 0);
+//         const lateMatch = entry.lateHours === (summary.lateHours || 0);
+//         const overtimeMatch = entry.overtimeHours === (summary.overtimeHours || 0);
+        
+//         if (!absenceMatch || !lateMatch || !overtimeMatch) {
+//           mismatches++;
+//           comparisons.push({
+//             staffId: entry.staffId,
+//             name: entry.name,
+//             payroll: {
+//               absences: entry.absences,
+//               lateHours: entry.lateHours,
+//               overtimeHours: entry.overtimeHours
+//             },
+//             attendance: {
+//               absences: summary.absences || 0,
+//               lateHours: summary.lateHours || 0,
+//               overtimeHours: summary.overtimeHours || 0
+//             },
+//             needsUpdate: true
+//           });
+//         }
+//       }
+//     }
+    
+//     return {
+//       period: {
+//         month,
+//         year,
+//         periodId: period._id,
+//         status: period.status
+//       },
+//       payrollEntries: entries.length,
+//       attendanceSummaries: summaries.length,
+//       mismatches,
+//       sample: comparisons.slice(0, 20) // Show first 20 mismatches
+//     };
+//   }
+
+//   async fixSyncAllEntries(month: number, year: number): Promise<any> {
+//     console.log(`🔧 FIX: Syncing all payroll entries for ${month}/${year}`);
+    
+//     // Find the payroll period
+//     const period = await this.payrollPeriodModel.findOne({ month, year });
+    
+//     if (!period) {
+//       throw new NotFoundException(`No payroll period found for ${month}/${year}`);
+//     }
+    
+//     // Get all entries for this period
+//     const entries = await this.payrollEntryModel.find({
+//       payrollPeriodId: period._id
+//     });
+    
+//     console.log(`📊 Found ${entries.length} payroll entries to sync`);
+    
+//     let updatedCount = 0;
+//     // Define the type for updates array
+//     const updates: Array<{
+//       staffId: string;
+//       name: string;
+//       absences: number;
+//       lateHours: number;
+//       visaCost: number;
+//       total: number;
+//     }> = [];
+    
+//     for (const entry of entries) {
+//       console.log(`\n🔄 Processing ${entry.name} (${entry.staffId}):`);
+//       console.log(`   Before - absences: ${entry.absences}, lateHours: ${entry.lateHours}, visaCost: ${entry.visaCost}`);
+      
+//       // Calculate all fields based on current values
+//       const plainEntry = entry.toObject();
+//       const calculated = this.calculationService.calculateAll(plainEntry as any);
+      
+//       // Update the entry with calculated values
+//       Object.assign(entry, calculated);
+      
+//       console.log(`   After  - absences: ${entry.absences}, lateHours: ${entry.lateHours}, visaCost: ${entry.visaCost}`);
+      
+//       await entry.save();
+//       updatedCount++;
+      
+//       updates.push({
+//         staffId: entry.staffId,
+//         name: entry.name,
+//         absences: entry.absences,
+//         lateHours: entry.lateHours,
+//         visaCost: entry.visaCost,
+//         total: entry.total
+//       });
+//     }
+    
+//     return {
+//       success: true,
+//       message: `Synced ${updatedCount} payroll entries`,
+//       periodId: period._id,
+//       month,
+//       year,
+//       updatedCount,
+//       sample: updates.slice(0, 5)
+//     };
+//   }
+// }
