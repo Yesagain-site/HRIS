@@ -119,7 +119,7 @@ export class PayrollService {
         totalDays,
         offDays,
         leaveTaken: 0,
-        workedDays: totalDays - absences, // ═══ AUTO-CALCULATED ═══
+        workedDays: totalDays, // ═══ AUTO-CALCULATED ═══
         ctc: emp.baseSalary || 0,
         dailyRate: 0,
         hourlyRate: 0,
@@ -237,32 +237,50 @@ export class PayrollService {
       throw new NotFoundException('Payroll entry not found');
     }
 
+    // CRITICAL: Check if period is generated
+    const period = await this.payrollPeriodModel.findById(entry.payrollPeriodId);
+    if (period && period.status === 'generated') {
+      throw new BadRequestException('Cannot update generated payroll');
+    }
+
     console.log('📦 Before update:', {
       absences: entry.absences,
       lateHours: entry.lateHours,
+      workedDays: entry.workedDays,
       overtimeHours: entry.overtimeHours,
       visaCost: entry.visaCost
     });
 
-    // Store old values
+    // Store which fields were manually updated
+    const manuallyUpdatedFields = Object.keys(dto);
+    console.log('✏️ Manually updated fields:', manuallyUpdatedFields);
+
+    // Apply user changes
     Object.assign(entry, dto);
     
     console.log('📝 After field update:', {
       absences: entry.absences,
       lateHours: entry.lateHours,
+      workedDays: entry.workedDays,
       overtimeHours: entry.overtimeHours,
       visaCost: entry.visaCost
     });
 
-    // ALWAYS recalculate - don't skip for manual updates
-    // The calculation service will handle all fields correctly
+    // Calculate everything based on current values
     const plainEntry = entry.toObject();
     const calculated = this.calculationService.calculateAll(plainEntry as any);
-    Object.assign(entry, calculated);
     
-    console.log('🧮 After calculation:', {
+    // 🟢 FIX: Only update fields that WEREN'T manually changed
+    for (const key of Object.keys(calculated)) {
+      if (!manuallyUpdatedFields.includes(key)) {
+        entry[key] = calculated[key];
+      }
+    }
+    
+    console.log('🧮 After calculation (preserving manual edits):', {
       absences: entry.absences,
       lateHours: entry.lateHours,
+      workedDays: entry.workedDays,
       overtimeHours: entry.overtimeHours,
       visaCost: entry.visaCost,
       dailyRate: entry.dailyRate,
@@ -273,7 +291,8 @@ export class PayrollService {
     console.log('✅ Saved to database:', {
       id: savedEntry._id,
       absences: savedEntry.absences,
-      lateHours: savedEntry.lateHours
+      lateHours: savedEntry.lateHours,
+      workedDays: savedEntry.workedDays
     });
 
     return savedEntry;

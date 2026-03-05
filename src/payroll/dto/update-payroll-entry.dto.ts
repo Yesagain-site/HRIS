@@ -68,4 +68,84 @@ export class UpdatePayrollEntryDto {
   @IsOptional()
   @IsBoolean()
   isCalculated?: boolean;
+
+   @IsOptional()
+  @IsNumber()
+  workedDays?: number;
+  
+  @IsOptional()
+  @IsNumber()
+  authAbsenceDeduction?: number;
+  
+  @IsOptional()
+  @IsNumber()
+  unauthAbsenceDeduction?: number;
+  
+  @IsOptional()
+  @IsNumber()
+  tardiness?: number;
+  
+  @IsOptional()
+  @IsNumber()
+  allDeductions?: number;
+  
+  @IsOptional()
+  @IsNumber()
+  overtimeAmount?: number;
+  
+  @IsOptional()
+  @IsNumber()
+  netDeductions?: number;
+  
+  @IsOptional()
+  @IsNumber()
+  januaryNetSalary?: number;
+  
+  @IsOptional()
+  @IsNumber()
+  totalJanuarySalary?: number;
+  
+  @IsOptional()
+  @IsNumber()
+  beforeOT?: number;
+  
+  @IsOptional()
+  @IsNumber()
+  ot?: number;
+  
+  @IsOptional()
+  @IsNumber()
+  totalCalculated?: number;
+  
+  @IsOptional()
+  @IsNumber()
+  dfrnce?: number;
+  
+  @IsOptional()
+  @IsNumber()
+  deductions?: number;
+  
+  @IsOptional()
+  @IsNumber()
+  inDays?: number;
+  
+  @IsOptional()
+  @IsNumber()
+  dailyRate?: number;
+  
+  @IsOptional()
+  @IsNumber()
+  hourlyRate?: number;
+  
+  @IsOptional()
+  @IsNumber()
+  offDayAmount?: number;
+  
+  @IsOptional()
+  @IsNumber()
+  holidayAmount?: number;
+  
+  @IsOptional()
+  @IsNumber()
+  total?: number;
 }
