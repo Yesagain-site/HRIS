@@ -272,8 +272,18 @@ const PayrollTable: React.FC<PayrollTableProps> = ({
 
   const handleCellSave = () => {
     if (editingCell) {
-      const numValue = parseFloat(editValue);
-      onUpdateCell(editingCell.entryId, editingCell.field, isNaN(numValue) ? editValue : numValue);
+      let finalValue;
+      
+      // Check if the user deleted the value (empty string)
+      if (editValue === '' || editValue === null || editValue === undefined) {
+        finalValue = 0; // Treat empty as zero - this is a DELETE operation!
+        console.log(`🗑️ Empty value detected for ${editingCell.field}, setting to 0`);
+      } else {
+        const numValue = parseFloat(editValue);
+        finalValue = isNaN(numValue) ? editValue : numValue;
+      }
+      
+      onUpdateCell(editingCell.entryId, editingCell.field, finalValue);
       setEditingCell(null);
     }
   };
@@ -924,6 +934,7 @@ const PayrollTable: React.FC<PayrollTableProps> = ({
                               autoFocus
                               className="w-full px-2 py-1 border border-indigo-400 rounded focus:outline-none focus:ring-2 focus:ring-indigo-400 text-left font-bold text-gray-900"
                               step="0.01"
+                              placeholder="0" // Add placeholder
                               onClick={(e) => e.stopPropagation()}
                               onDoubleClick={(e) => e.stopPropagation()}
                               onMouseDown={(e) => e.stopPropagation()}

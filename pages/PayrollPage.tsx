@@ -125,175 +125,147 @@ const PayrollPage: React.FC = () => {
   const calculateEntryLocally = useCallback((entry: PayrollEntry): PayrollEntry => {
     const calculated = { ...entry };
     
+    // ═══════════════════════════════════════════════════════════════
+    // BASIC CALCULATIONS
+    // ═══════════════════════════════════════════════════════════════
+    
     // Daily rate = CTC ÷ 30
     calculated.dailyRate = entry.ctc > 0 ? Number((entry.ctc / 30).toFixed(2)) : 0;
     
     // Hourly rate = Daily rate ÷ 10
     calculated.hourlyRate = calculated.dailyRate > 0 ? Number((calculated.dailyRate / 10).toFixed(2)) : 0;
     
-    // ⭐ IMPORTANT: Use existing values if they exist (from database)
-    // This ensures manual edits are never lost on refresh
+    // ═══════════════════════════════════════════════════════════════
+    // EARNINGS CALCULATIONS (Always recalculate based on input fields)
+    // ═══════════════════════════════════════════════════════════════
     
-    // Off day amount - use existing if available
-    if (entry.offDayAmount !== undefined && entry.offDayAmount !== 0) {
-      calculated.offDayAmount = entry.offDayAmount;
-    } else {
-      calculated.offDayAmount = calculated.dailyRate > 0 
-        ? Number((1.5 * (entry.offDaysWorked || 0) * calculated.dailyRate).toFixed(2)) 
-        : 0;
-    }
+    // Off day amount = 1.5 × offDaysWorked × dailyRate
+    calculated.offDayAmount = calculated.dailyRate > 0 
+      ? Number((1.5 * (entry.offDaysWorked || 0) * calculated.dailyRate).toFixed(2)) 
+      : 0;
     
-    // Holiday amount - use existing if available
-    if (entry.holidayAmount !== undefined && entry.holidayAmount !== 0) {
-      calculated.holidayAmount = entry.holidayAmount;
-    } else {
-      calculated.holidayAmount = calculated.dailyRate > 0 
-        ? Number((2 * (entry.holidayWorked || 0) * calculated.dailyRate).toFixed(2)) 
-        : 0;
-    }
+    // Holiday amount = 2 × holidayWorked × dailyRate
+    calculated.holidayAmount = calculated.dailyRate > 0 
+      ? Number((2 * (entry.holidayWorked || 0) * calculated.dailyRate).toFixed(2)) 
+      : 0;
     
     // Basic salary = (CTC ÷ Total Days) × Worked Days
     const basicSalary = entry.totalDays > 0 && entry.workedDays > 0
       ? (entry.ctc / entry.totalDays) * entry.workedDays
       : 0;
     
-    // TOTAL - use existing if available
-    if (entry.total !== undefined && entry.total !== 0) {
-      calculated.total = entry.total;
-    } else {
-      calculated.total = Number((
-        basicSalary +
-        (entry.leaveSalary || 0) -
-        (entry.cashAdvance || 0) +
-        (calculated.offDayAmount || 0) +
-        (calculated.holidayAmount || 0)
-      ).toFixed(2));
-    }
+    // TOTAL earnings = basic + leaveSalary - cashAdvance + offDayAmount + holidayAmount
+    calculated.total = Number((
+      basicSalary +
+      (entry.leaveSalary || 0) -
+      (entry.cashAdvance || 0) +
+      calculated.offDayAmount +
+      calculated.holidayAmount
+    ).toFixed(2));
     
-    // Authorised Absence deduction - use existing if available
-    if (entry.authAbsenceDeduction !== undefined && entry.authAbsenceDeduction !== 0) {
-      calculated.authAbsenceDeduction = entry.authAbsenceDeduction;
-    } else {
-      calculated.authAbsenceDeduction = calculated.dailyRate > 0 
-        ? Number(((entry.absences || 0) * calculated.dailyRate).toFixed(2)) 
-        : 0;
-    }
+    // ═══════════════════════════════════════════════════════════════
+    // DEDUCTION CALCULATIONS (Always recalculate based on input fields)
+    // ═══════════════════════════════════════════════════════════════
     
-    // Unauthorised Absence deduction - use existing if available
-    if (entry.unauthAbsenceDeduction !== undefined && entry.unauthAbsenceDeduction !== 0) {
-      calculated.unauthAbsenceDeduction = entry.unauthAbsenceDeduction;
-    } else {
-      calculated.unauthAbsenceDeduction = calculated.dailyRate > 0 
-        ? Number(((entry.unauthorizedAbsences || 0) * calculated.dailyRate).toFixed(2)) 
-        : 0;
-    }
+    // Authorised Absence deduction = absences × dailyRate
+    calculated.authAbsenceDeduction = calculated.dailyRate > 0 
+      ? Number(((entry.absences || 0) * calculated.dailyRate).toFixed(2)) 
+      : 0;
     
-    // Tardiness - use existing if available
-    if (entry.tardiness !== undefined && entry.tardiness !== 0) {
-      calculated.tardiness = entry.tardiness;
-    } else {
-      calculated.tardiness = calculated.hourlyRate > 0 
-        ? Number(((entry.lateHours || 0) * calculated.hourlyRate).toFixed(2)) 
-        : 0;
-    }
+    // Unauthorised Absence deduction = unauthorizedAbsences × dailyRate  
+    calculated.unauthAbsenceDeduction = calculated.dailyRate > 0 
+      ? Number(((entry.unauthorizedAbsences || 0) * calculated.dailyRate).toFixed(2)) 
+      : 0;
     
-    // All Deductions - use existing if available
-    if (entry.allDeductions !== undefined && entry.allDeductions !== 0) {
-      calculated.allDeductions = entry.allDeductions;
-    } else {
-      calculated.allDeductions = Number((
-        (entry.visaCost || 0) +
-        (calculated.authAbsenceDeduction || 0) +
-        (calculated.unauthAbsenceDeduction || 0) +
-        (calculated.tardiness || 0) +
-        (entry.fines || 0) +
-        (entry.cleaningFees || 0)
-      ).toFixed(2));
-    }
+    // Tardiness = lateHours × hourlyRate
+    calculated.tardiness = calculated.hourlyRate > 0 
+      ? Number(((entry.lateHours || 0) * calculated.hourlyRate).toFixed(2)) 
+      : 0;
     
-    // Overtime amount - use existing if available
-    if (entry.overtimeAmount !== undefined && entry.overtimeAmount !== 0) {
-      calculated.overtimeAmount = entry.overtimeAmount;
-    } else {
-      calculated.overtimeAmount = calculated.hourlyRate > 0 
-        ? Number(((entry.overtimeHours || 0) * calculated.hourlyRate * 1).toFixed(2)) 
-        : 0;
-    }
+    // All Deductions = visaCost + authAbsenceDeduction + unauthAbsenceDeduction + tardiness + fines + cleaningFees
+    calculated.allDeductions = Number((
+      (entry.visaCost || 0) +
+      calculated.authAbsenceDeduction +
+      calculated.unauthAbsenceDeduction +
+      calculated.tardiness +
+      (entry.fines || 0) +
+      (entry.cleaningFees || 0)
+    ).toFixed(2));
     
-    // Net deductions - use existing if available
-    if (entry.netDeductions !== undefined && entry.netDeductions !== 0) {
-      calculated.netDeductions = entry.netDeductions;
-    } else {
-      calculated.netDeductions = Number(((calculated.overtimeAmount || 0) - (calculated.allDeductions || 0)).toFixed(2));
-    }
+    // ═══════════════════════════════════════════════════════════════
+    // OVERTIME CALCULATIONS
+    // ═══════════════════════════════════════════════════════════════
     
-    // January Net Salary - use existing if available
-    if (entry.januaryNetSalary !== undefined && entry.januaryNetSalary !== 0) {
-      calculated.januaryNetSalary = entry.januaryNetSalary;
-    } else {
-      calculated.januaryNetSalary = Number((
-        (calculated.total || 0) +
-        (calculated.netDeductions || 0) +
-        (entry.extraFromManager || 0)
-      ).toFixed(2));
-    }
+    // Overtime amount = overtimeHours × hourlyRate × 1
+    calculated.overtimeAmount = calculated.hourlyRate > 0 
+      ? Number(((entry.overtimeHours || 0) * calculated.hourlyRate * 1).toFixed(2)) 
+      : 0;
     
-    // Total January Salary - use existing if available
-    if (entry.totalJanuarySalary !== undefined && entry.totalJanuarySalary !== 0) {
-      calculated.totalJanuarySalary = entry.totalJanuarySalary;
-    } else {
-      calculated.totalJanuarySalary = Number(((calculated.januaryNetSalary || 0) + (entry.backPayment || 0)).toFixed(2));
-    }
+    // Net deductions = overtimeAmount - allDeductions
+    calculated.netDeductions = Number((
+      calculated.overtimeAmount - calculated.allDeductions
+    ).toFixed(2));
     
-    // Before OT - use existing if available
-    if (entry.beforeOT !== undefined && entry.beforeOT !== 0) {
-      calculated.beforeOT = entry.beforeOT;
-    } else {
-      calculated.beforeOT = Number((
-        (calculated.totalJanuarySalary || 0) -
-        (calculated.overtimeAmount || 0) -
-        (entry.extraFromManager || 0)
-      ).toFixed(2));
-    }
+    // ═══════════════════════════════════════════════════════════════
+    // NET SALARY CALCULATIONS
+    // ═══════════════════════════════════════════════════════════════
     
-    // OT - use existing if available
-    if (entry.ot !== undefined && entry.ot !== 0) {
-      calculated.ot = entry.ot;
-    } else {
-      calculated.ot = Number(((calculated.overtimeAmount || 0) + (entry.extraFromManager || 0)).toFixed(2));
-    }
+    // January Net Salary = total + netDeductions + extraFromManager
+    calculated.januaryNetSalary = Number((
+      calculated.total +
+      calculated.netDeductions +
+      (entry.extraFromManager || 0)
+    ).toFixed(2));
     
-    // Total Calculated - use existing if available
-    if (entry.totalCalculated !== undefined && entry.totalCalculated !== 0) {
-      calculated.totalCalculated = entry.totalCalculated;
-    } else {
-      calculated.totalCalculated = Number(((calculated.beforeOT || 0) + (calculated.ot || 0)).toFixed(2));
-    }
+    // Total January Salary = januaryNetSalary + backPayment
+    calculated.totalJanuarySalary = Number((
+      calculated.januaryNetSalary +
+      (entry.backPayment || 0)
+    ).toFixed(2));
     
-    // DFRNCE - use existing if available
-    if (entry.dfrnce !== undefined && entry.dfrnce !== 0) {
-      calculated.dfrnce = entry.dfrnce;
-    } else {
-      calculated.dfrnce = Number(((calculated.totalJanuarySalary || 0) - (calculated.totalCalculated || 0)).toFixed(2));
-    }
+    // ═══════════════════════════════════════════════════════════════
+    // FINAL CALCULATIONS
+    // ═══════════════════════════════════════════════════════════════
     
-    // deductions - use existing if available
-    if (entry.deductions !== undefined && entry.deductions !== 0) {
-      calculated.deductions = entry.deductions;
-    } else {
-      calculated.deductions = Number(((calculated.allDeductions || 0) + (entry.cashAdvance || 0)).toFixed(2));
-    }
+    // Before OT = totalJanuarySalary - overtimeAmount - extraFromManager
+    calculated.beforeOT = Number((
+      calculated.totalJanuarySalary -
+      calculated.overtimeAmount -
+      (entry.extraFromManager || 0)
+    ).toFixed(2));
     
-    // in days - use existing if available
-    if (entry.inDays !== undefined && entry.inDays !== 0) {
-      calculated.inDays = entry.inDays;
-    } else {
-      calculated.inDays = calculated.dailyRate > 0 
-        ? Number(((calculated.deductions || 0) / calculated.dailyRate).toFixed(2)) 
-        : 0;
-    }
+    // OT = overtimeAmount + extraFromManager
+    calculated.ot = Number((
+      calculated.overtimeAmount +
+      (entry.extraFromManager || 0)
+    ).toFixed(2));
     
-    calculated.isCalculated = true;
+    // Total Calculated = beforeOT + ot
+    calculated.totalCalculated = Number((
+      calculated.beforeOT +
+      calculated.ot
+    ).toFixed(2));
+    
+    // Difference = totalJanuarySalary - totalCalculated
+    calculated.dfrnce = Number((
+      calculated.totalJanuarySalary -
+      calculated.totalCalculated
+    ).toFixed(2));
+    
+    // Deductions (final) = allDeductions
+    calculated.deductions = calculated.allDeductions;
+    
+    // In Days = worked days (copy from entry)
+    calculated.inDays = entry.workedDays || 0;
+    
+    console.log('🧮 Calculation complete:', {
+      name: entry.name,
+      absences: entry.absences,
+      authAbsenceDeduction: calculated.authAbsenceDeduction,
+      allDeductions: calculated.allDeductions,
+      januaryNetSalary: calculated.januaryNetSalary,
+      totalJanuarySalary: calculated.totalJanuarySalary
+    });
     
     return calculated;
   }, []);
@@ -388,7 +360,7 @@ const PayrollPage: React.FC = () => {
   }, [selectedMonth, selectedYear, loadPayrollDataWithParams]);
 
 
-  // ============= HANDLE CELL UPDATE - PERMANENT FIX =============
+  // ============= HANDLE CELL UPDATE - COMPLETE FIX FOR DELETION =============
   const handleUpdateCell = useCallback(async (entryId: string, field: string, value: any) => {
     // Prevent updates if period is generated
     if (periodStatus === 'generated') {
@@ -398,48 +370,38 @@ const PayrollPage: React.FC = () => {
     
     console.log('🔵 FRONTEND UPDATE:', { entryId, field, value });
     
-    // First update the UI optimistically and get the fully calculated entry
-    let updatedEntry: PayrollEntry | undefined;
-    
-    setPayrollEntries(prev => {
-      const updatedEntries = prev.map(entry => {
-        if (entry.id === entryId) {
-          console.log(`📝 Updating ${entry.name}: ${field} = ${value}`);
-          // Update the field and recalculate ALL fields
-          const updated = { ...entry, [field]: value };
-          const calculated = calculateEntryLocally(updated);
-          console.log('🧮 Calculated entry:', {
-            absences: calculated.absences,
-            lateHours: calculated.lateHours,
-            visaCost: calculated.visaCost,
-            total: calculated.total
-          });
-          return calculated;
-        }
-        return entry;
-      });
-      
-      updatedEntry = updatedEntries.find(e => e.id === entryId);
-      return updatedEntries;
-    });
-    
-    // Then save to database
-    if (!updatedEntry) return;
-    
     try {
       if (entryId.startsWith('temp-')) {
-        // Handle new entry creation (same as before)
+        // Handle new entry creation (keep existing logic)
         if (!payrollPeriodId) {
           console.log('⏳ Waiting for period ID...');
           return;
         }
         
+        // Update UI immediately with full calculation
+        let createdEntry: PayrollEntry | undefined;
+        
+        setPayrollEntries(prev => {
+          const updated = prev.map(entry => {
+            if (entry.id === entryId) {
+              const updatedEntry = { ...entry, [field]: value };
+              const calculated = calculateEntryLocally(updatedEntry);
+              createdEntry = calculated;
+              return calculated;
+            }
+            return entry;
+          });
+          return updated;
+        });
+        
+        if (!createdEntry) return;
+        
         console.log('📤 Creating new entry in database');
-        const { id, ...entryData } = updatedEntry;
+        const { id, ...entryData } = createdEntry;
         const entryToCreate = {
           ...entryData,
           payrollPeriodId: payrollPeriodId,
-          employeeId: updatedEntry.employeeId || null
+          employeeId: createdEntry.employeeId || null
         };
         
         const savedEntry = await api.createPayrollEntry(entryToCreate);
@@ -455,43 +417,154 @@ const PayrollPage: React.FC = () => {
         console.log('✅ Entry created with ID:', savedEntry._id);
         
       } else {
-        // ⭐ IMPROVED: Send ONLY the fields that changed + their dependencies
-        // Base update always includes the changed field
-        const updateData: any = {
-          [field]: value,
-          isCalculated: true
-        };
+        // ═══════════════════════════════════════════════════════════════
+        // STEP 1: Update UI IMMEDIATELY with full calculation
+        // ═══════════════════════════════════════════════════════════════
+        let updatedEntry: PayrollEntry | undefined;
         
-        // IMPORTANT: Also include related calculated fields
-        if (field === 'unauthorizedAbsences') {
-          updateData.unauthAbsenceDeduction = updatedEntry.unauthAbsenceDeduction;
-        }
-        else if (field === 'absences') {
-          updateData.authAbsenceDeduction = updatedEntry.authAbsenceDeduction;
-        }
-        else if (field === 'offDaysWorked') {
-          updateData.offDayAmount = updatedEntry.offDayAmount;
-        }
-        else if (field === 'holidayWorked') {
-          updateData.holidayAmount = updatedEntry.holidayAmount;
-        }
-        else if (field === 'overtimeHours') {
-          updateData.overtimeAmount = updatedEntry.overtimeAmount;
-        }
-        else if (field === 'workedDays' || field === 'leaveSalary' || field === 'cashAdvance') {
-          // These affect total, so include total
-          updateData.total = updatedEntry.total;
-          updateData.totalJanuarySalary = updatedEntry.totalJanuarySalary;
-        }
-        else if (field === 'extraFromManager') {
-          updateData.januaryNetSalary = updatedEntry.januaryNetSalary;
-          updateData.totalJanuarySalary = updatedEntry.totalJanuarySalary;
+        setPayrollEntries(prev => {
+          const updated = prev.map(entry => {
+            if (entry.id === entryId) {
+              console.log(`📝 Updating ${entry.name}: ${field} = ${value}`);
+              // Apply the change and immediately recalculate EVERYTHING
+              const modified = { ...entry, [field]: value };
+              const calculated = calculateEntryLocally(modified);
+              
+              console.log('🧮 Immediate calculation result:', {
+                field,
+                value,
+                allDeductions: calculated.allDeductions,
+                netDeductions: calculated.netDeductions,
+                januaryNetSalary: calculated.januaryNetSalary
+              });
+              
+              updatedEntry = calculated;
+              return calculated;
+            }
+            return entry;
+          });
+          return updated;
+        });
+        
+        if (!updatedEntry) {
+          console.error('❌ Failed to find entry in state');
+          return;
         }
         
-        console.log('📤 Sending optimized update:', updateData);
+        // ═══════════════════════════════════════════════════════════════
+        // STEP 2: Build comprehensive update data for backend
+        // ═══════════════════════════════════════════════════════════════
         
+        // List of ALL manually editable input fields
+        const editableInputFields = [
+          'offDaysWorked',
+          'holidayWorked',
+          'leaveSalary',
+          'cashAdvance',
+          'penaltyPoints',
+          'visaCost',
+          'fines',
+          'cleaningFees',
+          'absences',
+          'unauthorizedAbsences',
+          'lateHours',
+          'overtimeHours',
+          'extraFromManager',
+          'backPayment',
+          'finalModification',
+          'hrNotes',
+          'workedDays',
+          'leaveTaken'
+        ];
+        
+        // List of ALL calculated fields (backend will recalculate these)
+        const calculatedFields = [
+          'dailyRate',
+          'hourlyRate',
+          'offDayAmount',
+          'holidayAmount',
+          'total',
+          'authAbsenceDeduction',
+          'unauthAbsenceDeduction',
+          'tardiness',
+          'allDeductions',
+          'overtimeAmount',
+          'netDeductions',
+          'januaryNetSalary',
+          'totalJanuarySalary',
+          'beforeOT',
+          'ot',
+          'totalCalculated',
+          'dfrnce',
+          'deductions',
+          'inDays'
+        ];
+        
+        // Build update data with ALL input fields
+        const updateData: any = {};
+        
+        // Add all editable input fields with their current values
+        editableInputFields.forEach(fieldName => {
+          const fieldValue = (updatedEntry as any)[fieldName];
+          // Include ALL fields, even if they're 0, null, or undefined
+          updateData[fieldName] = fieldValue !== undefined && fieldValue !== null ? fieldValue : 0;
+        });
+        
+        // Also include all calculated fields so backend knows what frontend calculated
+        calculatedFields.forEach(fieldName => {
+          const fieldValue = (updatedEntry as any)[fieldName];
+          updateData[fieldName] = fieldValue !== undefined && fieldValue !== null ? fieldValue : 0;
+        });
+        
+        updateData.isCalculated = true;
+        
+        console.log('📤 Sending comprehensive update:', {
+          entryId,
+          fieldEdited: field,
+          editedValue: value,
+          sampleInputs: {
+            absences: updateData.absences,
+            visaCost: updateData.visaCost,
+            leaveSalary: updateData.leaveSalary,
+            cashAdvance: updateData.cashAdvance
+          },
+          sampleCalculated: {
+            authAbsenceDeduction: updateData.authAbsenceDeduction,
+            allDeductions: updateData.allDeductions,
+            januaryNetSalary: updateData.januaryNetSalary
+          }
+        });
+        
+        // ═══════════════════════════════════════════════════════════════
+        // STEP 3: Send to backend
+        // ═══════════════════════════════════════════════════════════════
         const response = await api.updatePayrollEntry(entryId, updateData);
-        console.log('✅ API Response:', response);
+        console.log('✅ Backend response:', response);
+        
+        // ═══════════════════════════════════════════════════════════════
+        // STEP 4: Sync state with backend response
+        // ═══════════════════════════════════════════════════════════════
+        setPayrollEntries(prev => prev.map(entry => {
+          if (entry.id === entryId) {
+            const synced = {
+              ...response,
+              id: response._id || entryId,
+              isEditable: entry.isEditable
+            };
+            
+            console.log('✅ State synced with backend:', {
+              name: synced.name,
+              allDeductions: synced.allDeductions,
+              netDeductions: synced.netDeductions,
+              januaryNetSalary: synced.januaryNetSalary
+            });
+            
+            return synced;
+          }
+          return entry;
+        }));
+        
+        console.log('✅ Update complete');
       }
     } catch (error) {
       console.error('❌ Error saving entry:', error);
@@ -500,7 +573,8 @@ const PayrollPage: React.FC = () => {
       // Reload data to ensure consistency
       await loadPayrollData();
     }
-  }, [calculateEntryLocally, periodStatus, payrollPeriodId, loadPayrollData]);
+  }, [periodStatus, payrollPeriodId, payrollEntries, calculateEntryLocally, loadPayrollData]);
+
 
 
   // ============= GENERATE PAYROLL =============
