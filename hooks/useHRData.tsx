@@ -601,66 +601,82 @@ const useHRDataState = (): HRDataContextType => {
             
             setServiceRequests(data || []);
             
-            const leaveReqs = (data || []).filter((r: any) => r.requestType === 'leave');
-            const permissionReqs = (data || []).filter((r: any) => r.requestType === 'permission');
-            const cashReqs = (data || []).filter((r: any) => r.requestType === 'cash');
-            const resignReqs = (data || []).filter((r: any) => r.requestType === 'resignation');
-            
-            setLeaveRequests(leaveReqs.map((r: any) => ({
+            // Map leave requests with consistent field names
+            setLeaveRequests((data || [])
+            .filter((r: any) => r.requestType === 'leave')
+            .map((r: any) => ({
                 id: r.id,
                 employeeId: r.employeeId,
-                employeeName: r.employeeName,
+                employeeName: r.employeeName || 'Unknown',
                 leaveType: r.leaveType || 'Annual',
                 startDate: r.startDate || '',
                 endDate: r.endDate || '',
-                reason: r.reason,
-                status: r.status,
+                reason: r.reason || '',
+                status: r.status || 'Pending',
+                managerNotes: r.managerNotes,
                 approverId: r.approverId,
                 approverName: r.approverName,
                 approvalDate: r.approvalDate,
                 createdAt: r.createdAt
             })));
             
-            setPermissionRequests(permissionReqs.map((r: any) => ({
+            // Map permission requests with consistent field names
+            setPermissionRequests((data || [])
+            .filter((r: any) => r.requestType === 'permission')
+            .map((r: any) => ({
                 id: r.id,
                 employeeId: r.employeeId,
-                employeeName: r.employeeName,
+                employeeName: r.employeeName || 'Unknown',
                 type: 'Permission',
-                date: r.permissionDate || '',
-                fromTime: r.startTime,
-                toTime: r.endTime,
-                reason: r.reason,
-                status: r.status,
+                date: r.permissionDate || r.date || '',
+                permissionDate: r.permissionDate || r.date || '',
+                fromTime: r.startTime || '',
+                toTime: r.endTime || '',
+                startTime: r.startTime || '',
+                endTime: r.endTime || '',
+                reason: r.reason || '',
+                status: r.status || 'Pending',
+                managerNotes: r.managerNotes,
                 approverId: r.approverId,
                 approverName: r.approverName,
                 approvalDate: r.approvalDate,
                 createdAt: r.createdAt
             })));
             
-            setCashAdvanceRequests(cashReqs.map((r: any) => ({
+            // Map cash advance requests with consistent field names
+            setCashAdvanceRequests((data || [])
+            .filter((r: any) => r.requestType === 'cash')
+            .map((r: any) => ({
                 id: r.id,
                 employeeId: r.employeeId,
-                employeeName: r.employeeName,
-                requestDate: r.createdAt,
+                employeeName: r.employeeName || 'Unknown',
+                requestDate: r.createdAt || '',
                 amount: r.amount || 0,
-                reason: r.reason,
+                reason: r.reason || '',
                 status: r.status === 'Approved' ? 'Approved' : 
-                        r.status === 'Rejected' ? 'Rejected' : 'Requested',
+                        r.status === 'Rejected' ? 'Rejected' : 'Pending',
+                managerNotes: r.managerNotes,
                 approvalDate: r.approvalDate,
                 approverId: r.approverId,
                 approverName: r.approverName,
-                repaymentStartDate: r.repaymentDate
+                repaymentDate: r.repaymentDate || r.repaymentStartDate || '',
+                repaymentStartDate: r.repaymentDate || r.repaymentStartDate || ''
             })));
             
-            setResignationRequests(resignReqs.map((r: any) => ({
+            // Map resignation requests with consistent field names
+            setResignationRequests((data || [])
+            .filter((r: any) => r.requestType === 'resignation')
+            .map((r: any) => ({
                 id: r.id,
                 employeeId: r.employeeId,
-                employeeName: r.employeeName,
-                submissionDate: r.createdAt,
-                lastWorkingDate: r.proposedLastDay || '',
-                reason: r.reason,
-                status: r.status === 'Approved' ? 'Accepted' :
-                        r.status === 'Rejected' ? 'Rejected' : 'Submitted',
+                employeeName: r.employeeName || 'Unknown',
+                submissionDate: r.createdAt || '',
+                proposedLastDay: r.proposedLastDay || r.lastWorkingDate || '',
+                lastWorkingDate: r.proposedLastDay || r.lastWorkingDate || '',
+                reason: r.reason || '',
+                status: r.status === 'Approved' ? 'Approved' : 
+                        r.status === 'Rejected' ? 'Rejected' : 'Pending',
+                managerNotes: r.managerNotes,
                 approverId: r.approverId,
                 approverName: r.approverName,
                 approvalDate: r.approvalDate,
@@ -670,14 +686,101 @@ const useHRDataState = (): HRDataContextType => {
         } catch (error) {
             console.error('❌ Error loading service requests:', error);
             if (mountedRef.current) {
-                setServiceRequests([]);
-                setLeaveRequests([]);
-                setPermissionRequests([]);
-                setCashAdvanceRequests([]);
-                setResignationRequests([]);
+            setServiceRequests([]);
+            setLeaveRequests([]);
+            setPermissionRequests([]);
+            setCashAdvanceRequests([]);
+            setResignationRequests([]);
             }
         }
     }, []);
+    // const loadServiceRequests = useCallback(async () => {
+    //     try {
+    //         console.log('🔄 Loading service requests from API...');
+            
+    //         const data = await api.getServiceRequests();
+            
+    //         if (!mountedRef.current) return;
+            
+    //         setServiceRequests(data || []);
+            
+    //         const leaveReqs = (data || []).filter((r: any) => r.requestType === 'leave');
+    //         const permissionReqs = (data || []).filter((r: any) => r.requestType === 'permission');
+    //         const cashReqs = (data || []).filter((r: any) => r.requestType === 'cash');
+    //         const resignReqs = (data || []).filter((r: any) => r.requestType === 'resignation');
+            
+    //         setLeaveRequests(leaveReqs.map((r: any) => ({
+    //             id: r.id,
+    //             employeeId: r.employeeId,
+    //             employeeName: r.employeeName,
+    //             leaveType: r.leaveType || 'Annual',
+    //             startDate: r.startDate || '',
+    //             endDate: r.endDate || '',
+    //             reason: r.reason,
+    //             status: r.status,
+    //             approverId: r.approverId,
+    //             approverName: r.approverName,
+    //             approvalDate: r.approvalDate,
+    //             createdAt: r.createdAt
+    //         })));
+            
+    //         setPermissionRequests(permissionReqs.map((r: any) => ({
+    //             id: r.id,
+    //             employeeId: r.employeeId,
+    //             employeeName: r.employeeName,
+    //             type: 'Permission',
+    //             date: r.permissionDate || '',
+    //             fromTime: r.startTime,
+    //             toTime: r.endTime,
+    //             reason: r.reason,
+    //             status: r.status,
+    //             approverId: r.approverId,
+    //             approverName: r.approverName,
+    //             approvalDate: r.approvalDate,
+    //             createdAt: r.createdAt
+    //         })));
+            
+    //         setCashAdvanceRequests(cashReqs.map((r: any) => ({
+    //             id: r.id,
+    //             employeeId: r.employeeId,
+    //             employeeName: r.employeeName,
+    //             requestDate: r.createdAt,
+    //             amount: r.amount || 0,
+    //             reason: r.reason,
+    //             status: r.status === 'Approved' ? 'Approved' : 
+    //                     r.status === 'Rejected' ? 'Rejected' : 'Requested',
+    //             approvalDate: r.approvalDate,
+    //             approverId: r.approverId,
+    //             approverName: r.approverName,
+    //             repaymentStartDate: r.repaymentDate
+    //         })));
+            
+    //         setResignationRequests(resignReqs.map((r: any) => ({
+    //             id: r.id,
+    //             employeeId: r.employeeId,
+    //             employeeName: r.employeeName,
+    //             submissionDate: r.createdAt,
+    //             lastWorkingDate: r.proposedLastDay || '',
+    //             reason: r.reason,
+    //             status: r.status === 'Approved' ? 'Accepted' :
+    //                     r.status === 'Rejected' ? 'Rejected' : 'Submitted',
+    //             approverId: r.approverId,
+    //             approverName: r.approverName,
+    //             approvalDate: r.approvalDate,
+    //             notes: r.managerNotes
+    //         })));
+            
+    //     } catch (error) {
+    //         console.error('❌ Error loading service requests:', error);
+    //         if (mountedRef.current) {
+    //             setServiceRequests([]);
+    //             setLeaveRequests([]);
+    //             setPermissionRequests([]);
+    //             setCashAdvanceRequests([]);
+    //             setResignationRequests([]);
+    //         }
+    //     }
+    // }, []);
 
     const refreshEmployees = useCallback(async () => {
         console.log('🔄 Refreshing employees from API...');
@@ -1042,11 +1145,15 @@ const useHRDataState = (): HRDataContextType => {
     const addLeaveRequest = async (request: any) => {
         try {
             console.log('📤 Creating leave request via API...');
+            
+            // Ensure leaveType is one of the allowed values
+            const leaveType = request.leaveType || 'Annual';
+            
             const response = await api.createServiceRequest({
                 employeeId: request.employeeId,
                 employeeName: request.employeeName,
                 requestType: 'leave',
-                leaveType: request.leaveType,
+                leaveType: leaveType,  // This should be 'Annual', 'Sick', or 'Emergency'
                 startDate: request.startDate,
                 endDate: request.endDate,
                 reason: request.reason

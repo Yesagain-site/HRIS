@@ -5,6 +5,7 @@ import { HRDataProvider } from './hooks/useHRData';
 import MainLayout from './components/Layout';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
+import EmployeeDashboard from './pages/Employeedashboard';
 import PersonnelPage from './pages/PersonnelPage';
 import PayrollPage from './pages/PayrollPage';
 import AttendancePage from './pages/AttendancePage';
@@ -17,7 +18,10 @@ import EmployeeServicesPage from './pages/EmployeeServicesPage';
 import HRPolicyPage from './pages/HRPolicyPage';
 import AnalyticsPage from './pages/AnalyticsPage';
 import { ProtectedRoute } from './components/ProtectedRoute'; 
+import RoleBasedRoute from './components/RoleBasedRoute'; 
+import DashboardRouter from './components/DashboardRouter';
 import PayrollDetailPage from './pages/PayrollDetailPage';
+import NotificationPage from './pages/NotificationPage';
 
 // --- SIMPLE THEME PROVIDER ---
 const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -70,10 +74,52 @@ const AppContent: React.FC = () => {
         {/* Public routes */}
         <Route path="/login" element={<LoginPage />} />
         
-        {/* Protected routes */}
-        <Route path="/" element={<ProtectedRoute><HRDataProvider><MainLayout /></HRDataProvider></ProtectedRoute>}>
-          <Route index element={<Navigate to="/dashboard" replace />} />
+        {/* NEW: Smart Dashboard Router - Automatically redirects to correct dashboard */}
+        <Route 
+          path="/dashboard" 
+          element={
+            <ProtectedRoute>
+              <DashboardRouter />
+            </ProtectedRoute>
+          } 
+        />
+        
+        {/* Employee routes with MainLayout */}
+        <Route 
+          path="/employee" 
+          element={
+            <RoleBasedRoute allowedRoles={['Employee', 'Manager']}>
+              <HRDataProvider>
+                <MainLayout />
+              </HRDataProvider>
+            </RoleBasedRoute>
+          }
+        >
+          <Route index element={<Navigate to="dashboard" replace />} />
+          <Route path="dashboard" element={<EmployeeDashboard />} />
+          <Route path="attendance" element={<AttendancePage />} />
+          <Route path="payslips" element={<PayrollPage />} />
+          <Route path="services" element={<EmployeeServicesPage />} />
+          <Route path="tasks" element={<TasksPage />} />
+          <Route path="policies" element={<HRPolicyPage />} />
+          <Route path="notifications" element={<NotificationPage />} />
+        </Route>
+        
+        {/* Admin routes with MainLayout - Protected by role */}
+        <Route 
+          path="/admin" 
+          element={
+            <RoleBasedRoute allowedRoles={['Admin', 'Super Admin', 'Manager']}>
+              <HRDataProvider>
+                <MainLayout />
+              </HRDataProvider>
+            </RoleBasedRoute>
+          }
+        >
+          {/* Admin Dashboard */}
           <Route path="dashboard" element={<DashboardPage />} />
+          
+          {/* All existing admin routes */}
           <Route path="analytics" element={<AnalyticsPage />} />
           <Route path="personnel/*" element={<PersonnelPage />} />
           <Route path="payroll" element={<PayrollPage />} />
@@ -86,10 +132,14 @@ const AppContent: React.FC = () => {
           <Route path="appraisals" element={<PerformanceAppraisalPage />} />
           <Route path="training" element={<TrainingPage />} />
           <Route path="settings" element={<SettingsPage />} />
+          <Route path="notifications" element={<NotificationPage />} />
         </Route>
         
+        {/* Root redirect to dashboard (will auto-route based on role) */}
+        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        
         {/* Fallback redirect */}
-        <Route path="*" element={<Navigate to="/login" replace />} />
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </ThemeProvider>
   );
@@ -107,3 +157,4 @@ const App: React.FC = () => {
 };
 
 export default App;
+

@@ -259,6 +259,41 @@ export class HRAPI extends APIService {
   // USER ENDPOINTS
   // ============================================================================
 
+
+  /**
+   * Bulk create users for employees
+   * @param users Array of { employeeId, password }
+   * @param roleId Optional role ID (defaults to Employee role)
+   */
+  async bulkCreateUsers(
+    users: { employeeId: string; password: string }[], 
+    roleId?: string
+  ) {
+    try {
+      console.log(`📤 Bulk creating ${users.length} users`);
+      
+      // ✅ CRITICAL FIX: Ensure all IDs are strings and clean the data
+      const cleanedUsers = users.map(u => ({
+        employeeId: String(u.employeeId).trim(), // Ensure string and trim
+        password: String(u.password) // Ensure password is string
+      }));
+      
+      const payload = { 
+        users: cleanedUsers,
+        roleId: roleId ? String(roleId).trim() : undefined
+      };
+      
+      console.log('📦 Sending payload:', JSON.stringify(payload, null, 2));
+      
+      const response = await this.post<any>('/users/bulk-create', payload);
+      console.log('✅ Bulk create response:', response);
+      return response;
+    } catch (error) {
+      console.error('❌ Bulk create users failed:', error);
+      throw error;
+    }
+  }
+
   async getUsers() {
     try {
       const response = await this.get<any>('/users');

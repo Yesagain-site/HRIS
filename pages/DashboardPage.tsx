@@ -1,17 +1,23 @@
 // DashboardPage.tsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useHRData } from '../hooks/useHRData';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { WorkStatus } from '../hooks/useHRData'; // Import the enum if needed
 import { Modal } from '../components/UI';
+import { BellIcon } from '../components/Icons';
+import { Link } from 'react-router-dom';
 
 const DashboardPage: React.FC = () => {
-  const { employees, attendanceRecords, roles, users } = useHRData();
+  const { employees, attendanceRecords, roles, users, leaveRequests, permissionRequests, cashAdvanceRequests, resignationRequests } = useHRData();
   const { currentUser } = useAuth();
+  const navigate = useNavigate();
+  const { isAdmin, isManager } = useAuth();
   
   // State for department modal
   const [selectedDepartment, setSelectedDepartment] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
   
   console.log('Dashboard Data:', {
     employeesCount: employees.length,
@@ -66,6 +72,16 @@ const DashboardPage: React.FC = () => {
   const sortedEmployees = [...departmentEmployees].sort((a, b) => 
     `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`)
   );
+
+  useEffect(() => {
+    const totalPending = 
+      (leaveRequests?.filter(r => r.status === 'Pending')?.length || 0) +
+      (permissionRequests?.filter(r => r.status === 'Pending')?.length || 0) +
+      (cashAdvanceRequests?.filter(r => r.status === 'Pending')?.length || 0) +
+      (resignationRequests?.filter(r => r.status === 'Pending')?.length || 0);
+    
+    setPendingCount(totalPending);
+  }, [leaveRequests, permissionRequests, cashAdvanceRequests, resignationRequests]);
   
   return (
     <div className="space-y-6">
@@ -147,8 +163,10 @@ const DashboardPage: React.FC = () => {
     
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold text-gray-800">Dashboard</h1>
-        <div className="text-sm text-gray-600">
-          Welcome back, {currentUser?.name || currentUser?.username || 'User'}!
+        <div className="flex items-center gap-4">
+          <div className="text-sm text-gray-600">
+            Welcome back, {currentUser?.name || currentUser?.username || 'User'}!
+          </div>
         </div>
       </div>
       

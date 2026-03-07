@@ -1562,14 +1562,14 @@ const PersonnelList: React.FC = () => {
                                         <td className="px-4 py-3.5 whitespace-nowrap text-right">
                                             <div className="flex items-center justify-end gap-1.5">
                                                 <button
-                                                    onClick={() => navigate(`/personnel/${emp.id || emp._id}`)}
+                                                    onClick={() => navigate(`/admin/personnel/${emp.id || emp._id}`)}
                                                     className="px-3 py-1.5 text-xs font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-primary-600)] hover:bg-[var(--color-primary-50)] rounded-lg border border-[var(--color-border)] hover:border-[var(--color-primary-200)] transition-colors"
                                                 >
                                                     View
                                                 </button>
                                                 {canManage && (
                                                     <button
-                                                        onClick={() => navigate(`/personnel/${emp.id || emp._id}`)}
+                                                        onClick={() => navigate(`/admin/personnel/${emp.id || emp._id}`)}
                                                         className="px-3 py-1.5 text-xs font-medium text-[var(--color-primary-600)] bg-[var(--color-primary-50)] hover:bg-[var(--color-primary-100)] rounded-lg border border-[var(--color-primary-200)] transition-colors"
                                                     >
                                                         Edit
@@ -1631,19 +1631,19 @@ const PersonnelPage: React.FC = () => {
     }
 
     return (
-        <Routes>
-            <Route index element={
-                isAdmin || isManager
-                    ? <PersonnelList />
-                    : <Navigate to={`/personnel/${employeeDetails?.id}`} replace />
-            } />
-            <Route path="new" element={
-                isAdmin || isManager
-                    ? <PersonnelDetailView />
-                    : <Navigate to={`/personnel/${employeeDetails?.id}`} replace />
-            } />
-            <Route path=":employeeId" element={<PersonnelDetailView />} />
-        </Routes>
+    <Routes>
+        <Route index element={
+        isAdmin || isManager
+            ? <PersonnelList />
+            : <Navigate to={`/personnel/${employeeDetails?.id}`} replace />
+        } />
+        <Route path="new" element={
+        isAdmin || isManager
+            ? <PersonnelDetailView />
+            : <Navigate to={`/personnel/${employeeDetails?.id}`} replace />
+        } />
+        <Route path=":employeeId" element={<PersonnelDetailView />} />
+    </Routes>
     );
 };
 

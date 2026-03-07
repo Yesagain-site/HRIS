@@ -9,6 +9,7 @@ import {
     NotificationSetting, NotificationRecipient, UIThemeSettings
 } from '../types'
 import { api } from '../services/api';
+import BulkUserUploadModal from '../components/BulkUserUploadModal';
 
 const TABS = {
     'company': 'Company Profile',
@@ -412,7 +413,8 @@ const ModuleManagementSection: React.FC = () => {
     );
 };
 
-// ============ FIXED UserManagementSection - NO BLINKING ============
+// ============ COMPLETELY FIXED UserManagementSection ============
+// ============ COMPLETELY FIXED UserManagementSection ============
 const UserManagementSection: React.FC = () => {
     const { 
         users = [], 
@@ -429,6 +431,13 @@ const UserManagementSection: React.FC = () => {
     const [editingUser, setEditingUser] = useState<any>(null);
     const [userToDelete, setUserToDelete] = useState<any>(null);
     const [isInitialLoad, setIsInitialLoad] = useState(true);
+    const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+    
+    // Filter States
+    const [searchTerm, setSearchTerm] = useState('');
+    const [departmentFilter, setDepartmentFilter] = useState('all');
+    const [roleFilter, setRoleFilter] = useState('all');
+    const [statusFilter, setStatusFilter] = useState('all');
 
     // Load data once on mount
     useEffect(() => {
@@ -452,7 +461,7 @@ const UserManagementSection: React.FC = () => {
         return () => {
             isMounted = false;
         };
-    }, []); // Empty dependency array = runs once
+    }, []);
 
     const handleSaveUser = async (userData: any) => {
         try {
@@ -463,7 +472,6 @@ const UserManagementSection: React.FC = () => {
             }
             setIsUserModalOpen(false);
             setEditingUser(null);
-            // Refresh after save
             if (loadUsers) await loadUsers();
         } catch (err: any) {
             alert(err?.message || 'Failed to save user');
@@ -481,7 +489,35 @@ const UserManagementSection: React.FC = () => {
         }
     };
 
-    // Format users for display with safe access - memoized
+    // ✅ FIXED: Get full employee name properly
+    const getFullEmployeeName = (employee: any) => {
+        if (!employee) return 'N/A';
+        
+        const nameParts = [
+            employee.firstName || '',
+            employee.middleName || '',
+            employee.lastName || ''
+        ].filter(part => part && part !== 'null' && part !== 'undefined' && part !== 'NULL' && part !== 'Nulll');
+        
+        const fullName = nameParts.join(' ').trim();
+        
+        if (fullName) {
+            return fullName;
+        }
+        
+        // Fallback to staffId or email
+        if (employee.staffId) {
+            return employee.staffId;
+        }
+        
+        if (employee.email) {
+            return employee.email;
+        }
+        
+        return 'N/A';
+    };
+
+    // Format users for display with safe access
     const usersWithDetails = useMemo(() => {
         if (!Array.isArray(users) || !Array.isArray(employees) || !Array.isArray(roles)) {
             return [];
@@ -489,19 +525,67 @@ const UserManagementSection: React.FC = () => {
         
         return users.map(user => {
             const employee = employees.find(e => e?.id === user?.employeeId);
-            const employeeName = employee 
-                ? `${employee.firstName || ''} ${employee.lastName || ''}`.trim() 
-                : 'N/A';
+            const employeeName = employee ? getFullEmployeeName(employee) : 'N/A';
             const role = roles.find(r => r?.id === user?.roleId);
             const roleName = role?.name || 'N/A';
             
             return {
                 ...user,
-                employeeName: employeeName || 'N/A',
-                roleName: roleName
+                employeeName: employeeName,
+                roleName: roleName,
+                department: employee?.department || 'N/A',
+                employee: employee
             };
         }).sort((a, b) => (a.username || '').localeCompare(b.username || ''));
     }, [users, employees, roles]);
+
+    // Get unique departments for filter dropdown
+    const departments = useMemo(() => {
+        const depts = usersWithDetails
+            .map(u => u.department)
+            .filter(dept => dept && dept !== 'N/A');
+        return ['all', ...new Set(depts)];
+    }, [usersWithDetails]);
+
+    // Get unique roles for filter dropdown
+    const uniqueRoles = useMemo(() => {
+        const roles = usersWithDetails.map(u => u.roleName).filter(r => r && r !== 'N/A');
+        return ['all', ...new Set(roles)];
+    }, [usersWithDetails]);
+
+    // Filtered users based on search and filters
+    const filteredUsers = useMemo(() => {
+        return usersWithDetails.filter(user => {
+            // Search filter (name, username, email)
+            const matchesSearch = searchTerm === '' || 
+                user.employeeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                user.username?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                user.email?.toLowerCase().includes(searchTerm.toLowerCase());
+
+            // Department filter
+            const matchesDepartment = departmentFilter === 'all' || 
+                user.department === departmentFilter;
+
+            // Role filter
+            const matchesRole = roleFilter === 'all' || 
+                user.roleName === roleFilter;
+
+            // Status filter
+            const matchesStatus = statusFilter === 'all' || 
+                (statusFilter === 'active' && user.isActive) ||
+                (statusFilter === 'inactive' && !user.isActive);
+
+            return matchesSearch && matchesDepartment && matchesRole && matchesStatus;
+        });
+    }, [usersWithDetails, searchTerm, departmentFilter, roleFilter, statusFilter]);
+
+    // Clear all filters
+    const clearFilters = () => {
+        setSearchTerm('');
+        setDepartmentFilter('all');
+        setRoleFilter('all');
+        setStatusFilter('all');
+    };
 
     if (isInitialLoad) {
         return (
@@ -514,78 +598,259 @@ const UserManagementSection: React.FC = () => {
     }
 
     return (
-        <Card title="User Management">
-            <div className="flex justify-end mb-4">
-                <Button onClick={() => { 
-                    setEditingUser(null); 
-                    setIsUserModalOpen(true); 
-                }}>
-                    <PlusIcon className="h-5 w-5 mr-2" />Add New User
-                </Button>
+        <Card title="User Management" className="overflow-visible">
+            {/* ✅ HEADER WITH VISIBLE BUTTONS - FIXED LAYOUT */}
+            <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 overflow-x-auto">
+                <div className="flex justify-between items-center min-w-[768px]">
+                    <div>
+                        <h2 className="text-lg font-semibold text-gray-800">User Accounts</h2>
+                        <p className="text-sm text-gray-500 mt-0.5">Manage system users and their access</p>
+                    </div>
+                    <div className="flex gap-3">
+                        <Button 
+                            variant="secondary"
+                            onClick={() => setIsBulkModalOpen(true)}
+                            className="whitespace-nowrap shadow-sm"
+                        >
+                            <PlusIcon className="h-4 w-4 mr-2" />
+                            Bulk Upload
+                        </Button>
+                        <Button 
+                            onClick={() => { 
+                                setEditingUser(null); 
+                                setIsUserModalOpen(true); 
+                            }}
+                            className="whitespace-nowrap shadow-sm"
+                        >
+                            <PlusIcon className="h-4 w-4 mr-2" />
+                            Add New User
+                        </Button>
+                    </div>
+                </div>
+            </div>
+
+            {/* Filters Section */}
+            <div className="p-6 border-b border-gray-200 bg-white">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {/* Search */}
+                    <div>
+                        <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1.5">
+                            Search
+                        </label>
+                        <div className="relative">
+                            <input
+                                type="text"
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                placeholder="Name, username, email..."
+                                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"
+                            />
+                            {searchTerm && (
+                                <button
+                                    onClick={() => setSearchTerm('')}
+                                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                >
+                                    ✕
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Department filter */}
+                    <div>
+                        <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1.5">
+                            Department
+                        </label>
+                        <select
+                            value={departmentFilter}
+                            onChange={(e) => setDepartmentFilter(e.target.value)}
+                            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"
+                        >
+                            <option value="all">All Departments</option>
+                            {departments.filter(d => d !== 'all').map(dept => (
+                                <option key={dept} value={dept}>{dept}</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    {/* Role filter */}
+                    <div>
+                        <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1.5">
+                            Role
+                        </label>
+                        <select
+                            value={roleFilter}
+                            onChange={(e) => setRoleFilter(e.target.value)}
+                            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"
+                        >
+                            <option value="all">All Roles</option>
+                            {uniqueRoles.filter(r => r !== 'all').map(role => (
+                                <option key={role} value={role}>{role}</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    {/* Status filter */}
+                    <div>
+                        <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1.5">
+                            Status
+                        </label>
+                        <select
+                            value={statusFilter}
+                            onChange={(e) => setStatusFilter(e.target.value)}
+                            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"
+                        >
+                            <option value="all">All Status</option>
+                            <option value="active">Active</option>
+                            <option value="inactive">Inactive</option>
+                        </select>
+                    </div>
+                </div>
+
+                {/* Filter summary and clear button */}
+                <div className="flex flex-wrap justify-between items-center mt-4 pt-3 border-t border-gray-200">
+                    <div className="text-sm text-gray-600">
+                        Showing <span className="font-semibold text-gray-900">{filteredUsers.length}</span> of {usersWithDetails.length} users
+                        {(searchTerm || departmentFilter !== 'all' || roleFilter !== 'all' || statusFilter !== 'all') && (
+                            <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                Filtered
+                            </span>
+                        )}
+                    </div>
+                    
+                    {(searchTerm || departmentFilter !== 'all' || roleFilter !== 'all' || statusFilter !== 'all') && (
+                        <button
+                            onClick={clearFilters}
+                            className="text-sm text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1"
+                        >
+                            <span>Clear Filters</span>
+                            <span>✕</span>
+                        </button>
+                    )}
+                </div>
             </div>
             
-            <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-[var(--color-border)]">
-                    <thead className="bg-opacity-50">
-                        <tr>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-[var(--color-text-secondary)] uppercase">Username</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-[var(--color-text-secondary)] uppercase">Email</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-[var(--color-text-secondary)] uppercase">Employee</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-[var(--color-text-secondary)] uppercase">Role</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-[var(--color-text-secondary)] uppercase">Status</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-[var(--color-text-secondary)] uppercase">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[var(--color-border)]">
-                        {usersWithDetails.length === 0 ? (
+            {/* ✅ FIXED: Scrollable table with full width */}
+            <div className="relative">
+                <div className="overflow-x-auto overflow-y-visible border-t border-gray-200">
+                    <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
                             <tr>
-                                <td colSpan={6} className="px-6 py-4 text-center text-gray-500">
-                                    No users found
-                                </td>
+                                <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Username</th>
+                                <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Email</th>
+                                <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Employee</th>
+                                <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Department</th>
+                                <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Role</th>
+                                <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Status</th>
+                                <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Actions</th>
                             </tr>
-                        ) : (
-                            usersWithDetails.map(user => (
-                                <tr key={user.id || user._id}>
-                                    <td className="px-6 py-4">{user.username || 'N/A'}</td>
-                                    <td className="px-6 py-4">{user.email || 'N/A'}</td>
-                                    <td className="px-6 py-4">{user.employeeName}</td>
-                                    <td className="px-6 py-4">{user.roleName}</td>
-                                    <td className="px-6 py-4">
-                                        <span className={`px-2 py-1 text-xs rounded-full ${
-                                            user.isActive 
-                                                ? 'bg-green-100 text-green-800' 
-                                                : 'bg-red-100 text-red-800'
-                                        }`}>
-                                            {user.isActive ? 'Active' : 'Inactive'}
-                                        </span>
-                                    </td>
-                                    <td className="px-6 py-4 space-x-2">
-                                        <Button 
-                                            size="sm" 
-                                            variant="secondary" 
-                                            onClick={() => { 
-                                                setEditingUser(user); 
-                                                setIsUserModalOpen(true); 
-                                            }}
-                                        >
-                                            <PencilIcon className="h-4 w-4" />
-                                        </Button>
-                                        <Button 
-                                            size="sm" 
-                                            variant="danger" 
-                                            onClick={() => setUserToDelete(user)}
-                                            disabled={user.roleName === 'Admin' && users.filter(u => u.roleName === 'Admin').length <= 1}
-                                            title={user.roleName === 'Admin' ? 'Cannot delete the last admin' : ''}
-                                        >
-                                            <TrashIcon className="h-4 w-4" />
-                                        </Button>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                            {filteredUsers.length === 0 ? (
+                                <tr>
+                                    <td colSpan={7} className="px-6 py-12 text-center">
+                                        <div className="flex flex-col items-center justify-center">
+                                            <div className="w-16 h-16 mb-4 rounded-full bg-gray-100 flex items-center justify-center">
+                                                <svg className="h-8 w-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                                                </svg>
+                                            </div>
+                                            <p className="text-gray-500 text-lg mb-2">No users found</p>
+                                            <p className="text-gray-400 text-sm mb-4">Try adjusting your search or filters</p>
+                                            {(searchTerm || departmentFilter !== 'all' || roleFilter !== 'all' || statusFilter !== 'all') && (
+                                                <button
+                                                    onClick={clearFilters}
+                                                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                                                >
+                                                    Clear Filters
+                                                </button>
+                                            )}
+                                        </div>
                                     </td>
                                 </tr>
-                            ))
-                        )}
-                    </tbody>
-                </table>
+                            ) : (
+                                filteredUsers.map(user => (
+                                    <tr key={user.id || user._id} className="hover:bg-gray-50 transition-colors">
+                                        <td className="px-6 py-4">
+                                            <div className="font-medium text-gray-900 whitespace-nowrap">{user.username || 'N/A'}</div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <div className="text-sm text-gray-600 whitespace-nowrap">{user.email || 'N/A'}</div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <div className="text-sm font-medium text-gray-900 whitespace-nowrap">{user.employeeName}</div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700 whitespace-nowrap">
+                                                {user.department}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <div className="text-sm text-gray-900 whitespace-nowrap">{user.roleName}</div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap ${
+                                                user.isActive 
+                                                    ? 'bg-green-50 text-green-700' 
+                                                    : 'bg-red-50 text-red-700'
+                                            }`}>
+                                                <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${
+                                                    user.isActive ? 'bg-green-500' : 'bg-red-500'
+                                                }`}></span>
+                                                {user.isActive ? 'Active' : 'Inactive'}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <div className="flex items-center space-x-2 whitespace-nowrap">
+                                                <button
+                                                    onClick={() => { 
+                                                        setEditingUser(user); 
+                                                        setIsUserModalOpen(true); 
+                                                    }}
+                                                    className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                                    title="Edit user"
+                                                >
+                                                    <PencilIcon className="h-4 w-4" />
+                                                </button>
+                                                <button
+                                                    onClick={() => setUserToDelete(user)}
+                                                    disabled={user.roleName === 'Admin' && users.filter(u => u.roleName === 'Admin').length <= 1}
+                                                    className={`p-2 rounded-lg transition-colors ${
+                                                        user.roleName === 'Admin' && users.filter(u => u.roleName === 'Admin').length <= 1
+                                                            ? 'text-gray-300 cursor-not-allowed'
+                                                            : 'text-red-600 hover:bg-red-50'
+                                                    }`}
+                                                    title={user.roleName === 'Admin' ? 'Cannot delete the last admin' : 'Delete user'}
+                                                >
+                                                    <TrashIcon className="h-4 w-4" />
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
             </div>
+            
+            {/* Footer with pagination */}
+            {filteredUsers.length > 0 && (
+                <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div className="text-sm text-gray-500">
+                        Showing 1 to {filteredUsers.length} of {filteredUsers.length} entries
+                    </div>
+                    <div className="flex items-center space-x-2">
+                        <button className="px-3 py-1 border border-gray-300 rounded-md text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50" disabled>
+                            Previous
+                        </button>
+                        <button className="px-3 py-1 bg-blue-600 text-white rounded-md text-sm">1</button>
+                        <button className="px-3 py-1 border border-gray-300 rounded-md text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50" disabled>
+                            Next
+                        </button>
+                    </div>
+                </div>
+            )}
             
             <UserFormModal 
                 isOpen={isUserModalOpen} 
@@ -598,6 +863,18 @@ const UserManagementSection: React.FC = () => {
                 roles={roles}
                 employees={employees}
                 users={users}
+            />
+
+            <BulkUserUploadModal
+                isOpen={isBulkModalOpen}
+                onClose={() => setIsBulkModalOpen(false)}
+                employees={employees}
+                users={users}
+                roles={roles}
+                onSuccess={() => {
+                    setIsBulkModalOpen(false);
+                    if (loadUsers) loadUsers();
+                }}
             />
             
             <ConfirmationModal
@@ -1531,30 +1808,32 @@ const SettingsPage: React.FC = () => {
     };
 
     return (
-        <div className="flex flex-col md:flex-row gap-6 items-start">
+        <div className="flex flex-col md:flex-row gap-6">
+            
             <aside className="w-full md:w-64 flex-shrink-0">
-                <Card className="p-0">
-                    <nav className="flex flex-col">
-                        {Object.entries(TABS).map(([key, label]) => (
-                            <button
-                                key={key}
-                                onClick={() => setActiveTab(key)}
-                                className={`text-left p-3 font-medium text-sm transition-colors ${
-                                    activeTab === key
-                                        ? 'bg-blue-50 text-blue-700 border-l-4 border-blue-500'
-                                        : 'text-gray-500 hover:bg-gray-50 border-l-4 border-transparent'
-                                }`}
-                            >
-                                {label}
-                            </button>
-                        ))}
-                    </nav>
-                </Card>
+            <Card className="p-0">
+                <nav className="flex flex-col">
+                {Object.entries(TABS).map(([key, label]) => (
+                    <button
+                    key={key}
+                    onClick={() => setActiveTab(key)}
+                    className={`text-left p-3 font-medium text-sm transition-colors ${
+                        activeTab === key
+                        ? 'bg-blue-50 text-blue-700 border-l-4 border-blue-500'
+                        : 'text-gray-500 hover:bg-gray-50 border-l-4 border-transparent'
+                    }`}
+                    >
+                    {label}
+                    </button>
+                ))}
+                </nav>
+            </Card>
             </aside>
 
-            <main className="flex-grow w-full">
-                {renderContent()}
+            <main className="flex-1 min-w-0">
+            {renderContent()}
             </main>
+
         </div>
     );
 };
