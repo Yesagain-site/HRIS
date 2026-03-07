@@ -10,9 +10,9 @@ export class CreateUserDto {
   @MinLength(6)
   password: string;
 
-  @IsNotEmpty()
+  @IsOptional() // ✅ Changed: Made optional
   @IsEmail()
-  email: string;
+  email?: string;
 
   @IsNotEmpty()
   @IsMongoId()

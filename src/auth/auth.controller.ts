@@ -16,6 +16,7 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
+import { BulkCreateUsersDto } from './dto/bulk-create-users.dto'; 
 
 @Controller()
 export class AuthController {
@@ -70,6 +71,18 @@ export class AuthController {
   @Post('users')
   createUser(@Body() dto: CreateUserDto, @Req() req) {
     return this.authService.createUser(dto, req.user.userId);
+  }
+
+  // ✅ NEW ENDPOINT: Bulk create users
+  @UseGuards(AuthGuard('jwt'))
+  @Post('users/bulk-create')
+  bulkCreateUsers(@Body() dto: BulkCreateUsersDto, @Req() req) {
+    console.log('📦 Bulk create request received:', {
+      userCount: dto.users?.length,
+      firstUser: dto.users?.[0],
+      roleId: dto.roleId
+    });
+    return this.authService.bulkCreateUsers(dto, req.user.userId);
   }
 
   @UseGuards(AuthGuard('jwt'))

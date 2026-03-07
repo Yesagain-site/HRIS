@@ -5,16 +5,19 @@ import { Model, Types } from 'mongoose';
 import * as bcrypt from 'bcrypt';
 import { User, UserDocument } from './schemas/user.schema';
 import { Role, RoleDocument } from './schemas/role.schema';
+import { Employee, EmployeeDocument } from '../employees/schemas/employee.schema'; 
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
+import { BulkCreateUsersDto } from './dto/bulk-create-users.dto'; 
 
 @Injectable()
 export class AuthService {
   constructor(
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectModel(Role.name) private roleModel: Model<RoleDocument>,
+    @InjectModel(Employee.name) private employeeModel: Model<EmployeeDocument>, // ✅ NEW INJECTION
     private jwtService: JwtService,
   ) {}
 
@@ -173,9 +176,12 @@ export class AuthService {
       throw new ConflictException(`Username "${dto.username}" already exists`);
     }
 
-    const existingEmail = await this.userModel.findOne({ email: dto.email });
-    if (existingEmail) {
-      throw new ConflictException(`Email "${dto.email}" already exists`);
+    // ✅ Changed: Only check email if provided
+    if (dto.email) {
+      const existingEmail = await this.userModel.findOne({ email: dto.email });
+      if (existingEmail) {
+        throw new ConflictException(`Email "${dto.email}" already exists`);
+      }
     }
 
     const role = await this.roleModel.findById(dto.roleId);
@@ -215,6 +221,195 @@ export class AuthService {
         _id: result.role._id.toString()
       } : null
     };
+  }
+
+  // ============ ✅ NEW: BULK USER CREATION ============
+  async bulkCreateUsers(dto: BulkCreateUsersDto, userId: string) {
+    console.log('🚀 Starting bulk user creation...');
+    console.log('📦 Received dto:', JSON.stringify(dto, null, 2));
+    
+    const results = {
+      success: 0,
+      failed: 0,
+      errors: [] as { employeeId: string; reason: string }[],
+      created: [] as any[]
+    };
+
+    // Get the Employee role (or use provided roleId)
+    let roleId: string;
+    if (dto.roleId) {
+      const role = await this.roleModel.findById(dto.roleId);
+      if (!role) {
+        throw new NotFoundException('Role not found');
+      }
+      roleId = dto.roleId;
+    } else {
+      const employeeRole = await this.roleModel.findOne({ name: 'Employee' });
+      if (!employeeRole) {
+        throw new NotFoundException('Employee role not found. Please create an "Employee" role first.');
+      }
+      roleId = employeeRole._id.toString();
+    }
+
+    console.log(`✅ Using role ID: ${roleId}`);
+
+    // Process each user in the bulk request
+    for (const userItem of dto.users) {
+      try {
+        // Ensure employeeId exists
+        if (!userItem.employeeId) {
+          results.failed++;
+          results.errors.push({
+            employeeId: 'undefined',
+            reason: 'Employee ID is missing'
+          });
+          continue;
+        }
+
+        console.log(`🔍 Processing employee ID: ${userItem.employeeId} (type: ${typeof userItem.employeeId})`);
+        
+        // ✅ FIXED: Properly type the employeeDocument variable
+        let employeeDocument: EmployeeDocument | null = null;
+        
+        // First, try to find by _id if it's a valid ObjectId
+        if (Types.ObjectId.isValid(userItem.employeeId)) {
+          try {
+            employeeDocument = await this.employeeModel.findById(userItem.employeeId);
+            if (employeeDocument) {
+              console.log(`✅ Found employee by _id: ${employeeDocument._id}`);
+            }
+          } catch (err) {
+            console.log(`⚠️ Error finding by _id: ${err.message}`);
+          }
+        }
+        
+        // If not found by _id, try to find by staffId
+        if (!employeeDocument) {
+          console.log(`🔍 Trying to find by staffId: ${userItem.employeeId}`);
+          employeeDocument = await this.employeeModel.findOne({ 
+            staffId: userItem.employeeId 
+          });
+          
+          if (employeeDocument) {
+            console.log(`✅ Found employee by staffId: ${employeeDocument._id}`);
+          }
+        }
+
+        // If still not found, try to find by other fields
+        if (!employeeDocument) {
+          console.log(`🔍 Trying to find by email or other fields...`);
+          // Try to find by email if it looks like an email
+          if (userItem.employeeId.includes('@')) {
+            employeeDocument = await this.employeeModel.findOne({ 
+              email: userItem.employeeId 
+            });
+          }
+        }
+
+        // If no employee found, log error and continue
+        if (!employeeDocument) {
+          console.log(`❌ No employee found for ID: ${userItem.employeeId}`);
+          results.failed++;
+          results.errors.push({
+            employeeId: String(userItem.employeeId),
+            reason: 'Employee not found'
+          });
+          continue;
+        }
+
+        // Check if employee already has a user account
+        const existingUser = await this.userModel.findOne({ 
+          employeeId: employeeDocument._id 
+        });
+        
+        if (existingUser) {
+          console.log(`❌ User already exists for employee: ${employeeDocument._id}`);
+          results.failed++;
+          results.errors.push({
+            employeeId: String(userItem.employeeId),
+            reason: 'User account already exists for this employee'
+          });
+          continue;
+        }
+
+        // Generate username from staffId or fallback
+        const username = employeeDocument.staffId || 
+                        `EMP${employeeDocument._id.toString().substring(0, 8)}`;
+
+        // Check if username already exists
+        const existingUsername = await this.userModel.findOne({ username });
+        if (existingUsername) {
+          console.log(`❌ Username already exists: ${username}`);
+          results.failed++;
+          results.errors.push({
+            employeeId: String(userItem.employeeId),
+            reason: `Username "${username}" already exists`
+          });
+          continue;
+        }
+
+        // Check if email exists (if employee has email)
+        if (employeeDocument.email) {
+          const existingEmail = await this.userModel.findOne({ 
+            email: employeeDocument.email 
+          });
+          if (existingEmail) {
+            console.log(`❌ Email already exists: ${employeeDocument.email}`);
+            results.failed++;
+            results.errors.push({
+              employeeId: String(userItem.employeeId),
+              reason: `Email "${employeeDocument.email}" already exists`
+            });
+            continue;
+          }
+        }
+
+        // Hash the password
+        const hashedPassword = await bcrypt.hash(userItem.password, 10);
+
+        // Create the user
+        const user = new this.userModel({
+          username,
+          password: hashedPassword,
+          email: employeeDocument.email || undefined,
+          role: new Types.ObjectId(roleId),
+          employeeId: employeeDocument._id,
+          isActive: true,
+          createdBy: userId
+        });
+
+        const saved = await user.save();
+        const populatedUser = await this.userModel.findById(saved._id).populate('role');
+
+        if (populatedUser) {
+          const userObject = populatedUser.toObject();
+          const { password: _, ...result } = userObject;
+
+          results.created.push({
+            ...result,
+            id: saved._id.toString(),
+            _id: saved._id.toString(),
+            role: result.role ? {
+              ...result.role,
+              id: result.role._id.toString(),
+              _id: result.role._id.toString()
+            } : null
+          });
+          results.success++;
+          console.log(`✅ Successfully created user for: ${employeeDocument.firstName} ${employeeDocument.lastName}`);
+        }
+      } catch (error: any) {
+        console.error(`❌ Error processing employee ${userItem.employeeId}:`, error);
+        results.failed++;
+        results.errors.push({
+          employeeId: String(userItem.employeeId),
+          reason: error.message || 'Unknown error'
+        });
+      }
+    }
+
+    console.log(`📊 Bulk creation complete: ${results.success} success, ${results.failed} failed`);
+    return results;
   }
 
   async updateUser(id: string, dto: UpdateUserDto, userId: string) {

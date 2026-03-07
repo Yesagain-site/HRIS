@@ -5,6 +5,7 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { User, UserSchema } from './schemas/user.schema';
 import { Role, RoleSchema } from './schemas/role.schema';
+import { EmployeesModule } from 'src/employees/employees.module';
 import { jwtConstants } from './constants';
 import { JwtStrategy } from './jwt.strategy';
 
@@ -18,6 +19,7 @@ import { JwtStrategy } from './jwt.strategy';
       secret: jwtConstants.secret,
       signOptions: { expiresIn: '1d' },
     }),
+    EmployeesModule,
   ],
   providers: [AuthService, JwtStrategy],
   controllers: [AuthController],
