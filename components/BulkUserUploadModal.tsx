@@ -1,7 +1,3 @@
-// ============================================================================
-// NEW FILE: components/BulkUserUploadModal.tsx
-// ============================================================================
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { Modal, Button, Input, Select } from './UI';
 import { api } from '../services/api';
