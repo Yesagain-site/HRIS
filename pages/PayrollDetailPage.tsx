@@ -190,7 +190,7 @@ const PayrollDetailPage: React.FC = () => {
   useEffect(() => {
     if (!initialEntry) {
       console.error('No entry data provided');
-      navigate('/payroll');
+      navigate('/admin/payroll');
     } else {
       console.log('📝 PayrollDetailPage loaded with entry:', {
         id: initialEntry.id,
@@ -286,7 +286,7 @@ const PayrollDetailPage: React.FC = () => {
         console.log('✅ API Response:', response);
         
         // Navigate back with the updated data
-        navigate('/payroll', { 
+        navigate('/admin/payroll', { 
         state: { 
             updatedEntry: formData,
             shouldRefresh: false 
@@ -304,10 +304,10 @@ const PayrollDetailPage: React.FC = () => {
   const handleCancel = () => {
     if (isModified) {
       if (window.confirm('You have unsaved changes. Are you sure you want to leave?')) {
-        navigate('/payroll');
+        navigate('/admin/payroll');
       }
     } else {
-      navigate('/payroll');
+      navigate('/admin/payroll');
     }
   };
 
@@ -323,7 +323,7 @@ const PayrollDetailPage: React.FC = () => {
       <div className="mb-6 flex items-center justify-between">
         <div>
           <button
-            onClick={() => navigate('/payroll')}
+            onClick={() => navigate('/admin/payroll')}
             className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-2"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

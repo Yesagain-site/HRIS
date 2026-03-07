@@ -1202,8 +1202,8 @@ const PayrollPage: React.FC = () => {
                   periodStatus={periodStatus}
                   onRowClick={(entry) => {
                     console.log('🖱️ Row clicked in PayrollPage:', entry.name);
-                    // Navigate to detail page with the entry data
-                    navigate(`/payroll/${entry.id}`, { state: { entry } });
+                    // Use relative path - this will go to /admin/payroll/[entryId]
+                    navigate(`${entry.id}`, { state: { entry } });
                   }}
                   onDeleteEntry={handleDeleteEntry}
                 />
