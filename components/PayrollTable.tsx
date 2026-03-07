@@ -1,3 +1,4 @@
+// payroll table
 import React, { useState, useMemo, useRef } from 'react';
 import { Button } from './UI';
 import { CheckIcon } from './Icons';
