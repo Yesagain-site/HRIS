@@ -1249,6 +1249,34 @@ const useHRDataState = (): HRDataContextType => {
             setServiceRequests(prev =>
                 prev.map(req => req.id === id ? { ...req, ...response } : req)
             );
+
+             // ✅ NEW: If this is a resignation request that was APPROVED
+            if (type === 'resignation' && status === 'Approved') {
+                console.log('📝 Resignation approved - updating employee status to Resigned');
+                
+                // Find the request to get the employeeId
+                const request = serviceRequests.find(r => r.id === id);
+                
+                if (request?.employeeId) {
+                    try {
+                    // Get the current employee data
+                    const employee = employees.find(e => e.id === request.employeeId);
+                    
+                    if (employee) {
+                        // Update employee status to RESIGNED
+                        await updateEmployee(request.employeeId, {
+                        ...employee,
+                        workStatus: 'Resigned',
+                        status: 'Resigned'
+                        });
+                        
+                        console.log(`✅ Employee ${request.employeeName} status updated to Resigned`);
+                    }
+                    } catch (error) {
+                    console.error('❌ Failed to update employee status:', error);
+                    }
+                }
+            }
             
             // Refresh from server to be sure
             await loadServiceRequests();

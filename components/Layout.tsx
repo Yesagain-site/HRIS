@@ -24,6 +24,8 @@ interface NavItem {
   label: string;
   icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
   permission: string;
+  adminPath?: string;
+  employeePath?: string;
 }
 
 const NavHeading: React.FC<{ children: React.ReactNode; isCompact: boolean }> = ({ children, isCompact }) => (
@@ -44,9 +46,8 @@ const MainLayout: React.FC = () => {
   const notificationsRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
   
-  // Determine user role flags FIRST (before using them)
+  // Determine user role flags
   const roleName = currentUser?.role?.name || (currentUser?.role as any)?.name || 'User';
-  const isEmployee = roleName === 'Employee';
   const isHR = currentUser?.email === 'hr@yesagain.com' || isAdmin;
   
   // Get employee name from employees list
@@ -136,87 +137,152 @@ const MainLayout: React.FC = () => {
   const userInitials = userName.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2) || 'U';
   const isCompact = false;
   
-  // Determine base path based on current URL
-  const basePath = location.pathname.startsWith('/admin') ? '/admin' : '/employee';
-  
-  // Get navigation sections based on user role
-  const getNavSections = () => {
-    if (isEmployee) {
-      // Employee menu - limited items
-      return [
-        {
-          title: 'Main',
-          items: [
-            { to: `${basePath}/dashboard`, label: 'Dashboard', icon: ChartBarIcon, permission: 'canViewDashboard' },
-          ],
-        },
-        {
-          title: 'Employee Services',
-          items: [
-            { to: `${basePath}/attendance`, label: 'My Attendance', icon: CalendarDaysIcon, permission: 'canViewAttendance' },
-            { to: `${basePath}/payslips`, label: 'My Payslips', icon: CurrencyDollarIcon, permission: 'canViewPayroll' },
-            { to: `${basePath}/services`, label: 'My Requests', icon: BriefcaseIcon, permission: 'canViewServiceRequests' },
-            { to: `${basePath}/tasks`, label: 'My Tasks', icon: ClipboardDocumentListIcon, permission: 'canViewTasks' },
-            { to: `${basePath}/policies`, label: 'HR Policies', icon: DocumentTextIcon, permission: 'canViewHRPolicies' },
-          ],
-        }
-      ];
-    } else {
-      // Admin/Manager menu - full items
-      return [
-        {
-          title: 'Main',
-          items: [
-            { to: `${basePath}/dashboard`, label: 'Dashboard', icon: ChartBarIcon, permission: 'canViewDashboard' },
-          ],
-        },
-        {
-          title: 'Analytics',
-          items: [
-            { to: `${basePath}/analytics`, label: 'Analytics', icon: ChartBarIcon, permission: 'canViewAnalytics' },
-          ],
-        },
-        {
-          title: 'Core HR',
-          items: [
-            { to: `${basePath}/personnel`, label: 'Personnel', icon: UserGroupIcon, permission: 'canViewPersonnel' },
-            { to: `${basePath}/payroll`, label: 'Payroll', icon: CurrencyDollarIcon, permission: 'canViewPayroll' },
-            { to: `${basePath}/attendance`, label: 'Attendance', icon: CalendarDaysIcon, permission: 'canViewAttendance' },
-            { to: `${basePath}/reports`, label: 'Reports', icon: ChartBarIcon, permission: 'canViewReports' },
-          ],
-        },
-        {
-          title: 'Operations',
-          items: [
-            { to: `${basePath}/services`, label: 'Employee Services', icon: BriefcaseIcon, permission: 'canViewServiceRequests' },
-            { to: `${basePath}/tasks`, label: 'Tasks', icon: ClipboardDocumentListIcon, permission: 'canViewTasks' },
-            { to: `${basePath}/policies`, label: 'HR Policies', icon: DocumentTextIcon, permission: 'canViewHRPolicies' },
-          ],
-        },
-        {
-          title: 'Development',
-          items: [
-            { to: `${basePath}/appraisals`, label: 'Appraisals', icon: UserCircleIcon, permission: 'canViewAppraisals' },
-            { to: `${basePath}/training`, label: 'Training', icon: AcademicCapIcon, permission: 'canViewTraining' },
-          ]
-        },
-        {
-          title: 'System',
-          items: [
-            { to: `${basePath}/settings`, label: 'Settings', icon: Cog6ToothIcon, permission: 'canManageSettings' },
-          ]
-        }
-      ];
-    }
+  // ✅ FIXED: Unified menu with both admin and employee paths
+  const getAllNavSections = () => {
+    return [
+      {
+        title: 'Main',
+        items: [
+          { 
+            to: '/employee/dashboard', 
+            label: 'Dashboard', 
+            icon: ChartBarIcon, 
+            permission: 'canViewDashboard', 
+            adminPath: '/admin/dashboard',
+            employeePath: '/employee/dashboard'
+          },
+        ],
+      },
+      {
+        title: 'Analytics',
+        items: [
+          { 
+            to: '/admin/analytics', 
+            label: 'Analytics', 
+            icon: ChartBarIcon, 
+            permission: 'canViewAnalytics', 
+            adminPath: '/admin/analytics',
+            employeePath: '/employee/analytics' 
+          },
+        ],
+      },
+      {
+        title: 'Core HR',
+        items: [
+          { 
+            to: '/employee/personnel', 
+            label: 'Personnel', 
+            icon: UserGroupIcon, 
+            permission: 'canViewPersonnel', 
+            adminPath: '/admin/personnel',
+            employeePath: '/employee/personnel'
+          },
+          { 
+            to: '/employee/payroll', 
+            label: 'Payroll', 
+            icon: CurrencyDollarIcon, 
+            permission: 'canViewPayroll', 
+            adminPath: '/admin/payroll',
+            employeePath: '/employee/payroll'
+          },
+          { 
+            to: '/employee/attendance', 
+            label: 'Attendance', 
+            icon: CalendarDaysIcon, 
+            permission: 'canViewAttendance', 
+            adminPath: '/admin/attendance',
+            employeePath: '/employee/attendance'
+          },
+          { 
+            to: '/admin/reports', 
+            label: 'Reports', 
+            icon: ChartBarIcon, 
+            permission: 'canViewReports', 
+            adminPath: '/admin/reports',
+            employeePath: '/employee/reports'
+          },
+        ],
+      },
+      {
+        title: 'Operations',
+        items: [
+          { 
+            to: '/employee/services', 
+            label: 'Employee Services', 
+            icon: BriefcaseIcon, 
+            permission: 'canViewServiceRequests', 
+            adminPath: '/admin/services',
+            employeePath: '/employee/services'
+          },
+          { 
+            to: '/employee/tasks', 
+            label: 'Tasks', 
+            icon: ClipboardDocumentListIcon, 
+            permission: 'canViewTasks', 
+            adminPath: '/admin/tasks',
+            employeePath: '/employee/tasks'
+          },
+          { 
+            to: '/employee/policies', 
+            label: 'HR Policies', 
+            icon: DocumentTextIcon, 
+            permission: 'canViewHRPolicies', 
+            adminPath: '/admin/policies',
+            employeePath: '/employee/policies'
+          },
+        ],
+      },
+      {
+        title: 'Development',
+        items: [
+          { 
+            to: '/employee/appraisals',  // ✅ Changed from /admin/appraisals to /employee/appraisals
+            label: 'Appraisals', 
+            icon: UserCircleIcon, 
+            permission: 'canViewAppraisals', 
+            adminPath: '/admin/appraisals',
+            employeePath: '/employee/appraisals'
+          },
+          { 
+            to: '/employee/training',     // ✅ Changed from /admin/training to /employee/training
+            label: 'Training', 
+            icon: AcademicCapIcon, 
+            permission: 'canViewTraining', 
+            adminPath: '/admin/training',
+            employeePath: '/employee/training'
+          },
+        ]
+      },
+      {
+        title: 'System',
+        items: [
+          { 
+            to: '/admin/settings', 
+            label: 'Settings', 
+            icon: Cog6ToothIcon, 
+            permission: 'canManageSettings', 
+            adminPath: '/admin/settings',
+            employeePath: '/employee/settings'
+          },
+        ]
+      }
+    ];
   };
 
-  const allNavSections = getNavSections();
+  // Get all possible navigation sections
+  const allNavSections = getAllNavSections();
 
-  // Filter nav items based on user permissions
+  // Filter nav items based on user permissions ONLY - no role-based filtering
   const filteredNavSections = allNavSections
     .map(section => ({
       ...section,
-      items: section.items.filter(item => safeHasPermission(item.permission))
+      items: section.items
+        .filter(item => safeHasPermission(item.permission))
+        .map(item => ({
+          ...item,
+          // Use the appropriate path based on user role
+          to: isAdmin || isManager ? item.adminPath || item.to : item.employeePath || item.to
+        }))
     }))
     .filter(section => section.items.length > 0);
 
@@ -284,7 +350,7 @@ const MainLayout: React.FC = () => {
           
           <div className="fixed inset-y-0 left-0 w-64 bg-gray-800 text-white z-50 flex flex-col py-7 shadow-xl">
             <div className="px-4 mb-6 flex justify-between items-center">
-              <Link to={`${basePath}/dashboard`} className="flex items-center space-x-2" onClick={() => setSidebarOpen(false)}>
+              <Link to={isAdmin || isManager ? '/admin/dashboard' : '/employee/dashboard'} className="flex items-center space-x-2" onClick={() => setSidebarOpen(false)}>
                 <span className="text-2xl font-extrabold text-white tracking-tight">YesPeople</span>
               </Link>
               <button 
@@ -335,7 +401,7 @@ const MainLayout: React.FC = () => {
       {/* Sidebar for Desktop - Navigation Only */}
       <aside className={sidebarClasses}>
         <div className="px-4 mb-6">
-          <Link to={`${basePath}/dashboard`} className="flex items-center space-x-2 group">
+          <Link to={isAdmin || isManager ? '/admin/dashboard' : '/employee/dashboard'} className="flex items-center space-x-2 group">
             <span className="text-2xl font-extrabold text-white tracking-tight group-hover:text-blue-300 transition-colors">
               YesPeople
             </span>

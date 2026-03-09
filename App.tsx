@@ -74,7 +74,7 @@ const AppContent: React.FC = () => {
         {/* Public routes */}
         <Route path="/login" element={<LoginPage />} />
         
-        {/* NEW: Smart Dashboard Router - Automatically redirects to correct dashboard */}
+        {/* Smart Dashboard Router - Automatically redirects to correct dashboard */}
         <Route 
           path="/dashboard" 
           element={
@@ -84,7 +84,7 @@ const AppContent: React.FC = () => {
           } 
         />
         
-        {/* Employee routes with MainLayout */}
+        {/* ========= EMPLOYEE ROUTES - ALL POSSIBLE ROUTES ========= */}
         <Route 
           path="/employee" 
           element={
@@ -96,16 +96,45 @@ const AppContent: React.FC = () => {
           }
         >
           <Route index element={<Navigate to="dashboard" replace />} />
+          
+          {/* Core Employee Routes */}
           <Route path="dashboard" element={<EmployeeDashboard />} />
           <Route path="attendance" element={<AttendancePage />} />
           <Route path="payslips" element={<PayrollPage />} />
+          <Route path="payroll" element={<PayrollPage />} />
           <Route path="services" element={<EmployeeServicesPage />} />
           <Route path="tasks" element={<TasksPage />} />
           <Route path="policies" element={<HRPolicyPage />} />
           <Route path="notifications" element={<NotificationPage />} />
+          
+          {/* Personnel Routes */}
+          <Route path="personnel/*" element={<PersonnelPage />} />
+          
+          {/* Payroll Detail */}
+          <Route path="payroll/:entryId" element={<PayrollDetailPage />} />
+          
+          {/* ========= ADDITIONAL ROUTES FOR PERMISSION-BASED ACCESS ========= */}
+          {/* Appraisals - will be protected by RoleBasedRoute */}
+          <Route path="appraisals" element={<PerformanceAppraisalPage />} />
+          <Route path="appraisals/:id" element={<PerformanceAppraisalPage />} />
+          
+          {/* Training - will be protected by RoleBasedRoute */}
+          <Route path="training" element={<TrainingPage />} />
+          <Route path="training/:id" element={<TrainingPage />} />
+          
+          {/* Reports - will be protected by RoleBasedRoute */}
+          <Route path="reports" element={<ReportsPage />} />
+          <Route path="reports/:type" element={<ReportsPage />} />
+          
+          {/* Analytics - will be protected by RoleBasedRoute */}
+          <Route path="analytics" element={<AnalyticsPage />} />
+          
+          {/* Settings - will be protected by RoleBasedRoute */}
+          <Route path="settings" element={<SettingsPage />} />
+          <Route path="settings/*" element={<SettingsPage />} />
         </Route>
-        
-        {/* Admin routes with MainLayout - Protected by role */}
+
+        {/* ========= ADMIN ROUTES ========= */}
         <Route 
           path="/admin" 
           element={
@@ -119,7 +148,7 @@ const AppContent: React.FC = () => {
           {/* Admin Dashboard */}
           <Route path="dashboard" element={<DashboardPage />} />
           
-          {/* All existing admin routes */}
+          {/* All admin routes */}
           <Route path="analytics" element={<AnalyticsPage />} />
           <Route path="personnel/*" element={<PersonnelPage />} />
           <Route path="payroll" element={<PayrollPage />} />
@@ -135,7 +164,7 @@ const AppContent: React.FC = () => {
           <Route path="notifications" element={<NotificationPage />} />
         </Route>
         
-        {/* Root redirect to dashboard (will auto-route based on role) */}
+        {/* Root redirect to dashboard */}
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         
         {/* Fallback redirect */}
@@ -157,4 +186,3 @@ const App: React.FC = () => {
 };
 
 export default App;
-

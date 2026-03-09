@@ -6,6 +6,7 @@ export enum WorkStatus {
     ACTIVE = 'Active',
     PROBATION = 'Probation',
     ON_LEAVE = 'On Leave',
+    UNDER_RESIGNATION = 'Under Resignation',
     RESIGNED = 'Resigned',
     TERMINATED = 'Terminated',
     SUSPENDED = 'Suspended',

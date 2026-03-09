@@ -932,7 +932,7 @@ const PersonnelDetailView: React.FC = () => {
             const result = await addEmployee(employeeData as any);
             console.log('✅ Employee created:', result);
             alert("Employee created successfully!");
-            navigate('/personnel');
+            navigate('/admin/personnel');
             
             } else if (employee) {
             const employeeIdToUpdate = employee.id || (employee as any)._id;
@@ -951,7 +951,7 @@ const PersonnelDetailView: React.FC = () => {
             }
             
             alert("Employee updated successfully!");
-            navigate('/personnel');
+            navigate('/admin/personnel');
             }
         } catch (error: any) {
             console.error("❌ Error saving employee:", error);
@@ -1010,7 +1010,7 @@ const PersonnelDetailView: React.FC = () => {
         <div className="space-y-6">
             {/* Back + actions row */}
             <div className="flex justify-between items-center">
-                <Button variant="secondary" onClick={() => navigate('/personnel')}>
+                <Button variant="secondary" onClick={() => navigate('/admin/personnel')}>
                     &larr; Back to Personnel List
                 </Button>
                 {canManage && (isAdmin || isManager || isOwnProfile) && (
@@ -1625,8 +1625,15 @@ const PersonnelPage: React.FC = () => {
     if (!isAdmin && !isManager) {
         const pathParts = location.pathname.split('/');
         const requestedId = pathParts[pathParts.length - 1];
-        if (requestedId !== 'new' && requestedId !== employeeDetails?.id && !location.pathname.endsWith('/personnel')) {
-            return <Navigate to={`/personnel/${employeeDetails?.id}`} replace />;
+        
+        // If trying to access the list view, redirect to their own profile
+        if (location.pathname.endsWith('/personnel') || location.pathname === '/employee/personnel') {
+            return <Navigate to={`/employee/personnel/${employeeDetails?.id}`} replace />;
+        }
+        
+        // If trying to access someone else's profile, redirect to their own
+        if (requestedId !== 'new' && requestedId !== employeeDetails?.id) {
+            return <Navigate to={`/employee/personnel/${employeeDetails?.id}`} replace />;
         }
     }
 
@@ -1635,12 +1642,12 @@ const PersonnelPage: React.FC = () => {
         <Route index element={
         isAdmin || isManager
             ? <PersonnelList />
-            : <Navigate to={`/personnel/${employeeDetails?.id}`} replace />
+            : <Navigate to={`/employee/personnel/${employeeDetails?.id}`} replace />
         } />
         <Route path="new" element={
         isAdmin || isManager
             ? <PersonnelDetailView />
-            : <Navigate to={`/personnel/${employeeDetails?.id}`} replace />
+            : <Navigate to={`/employee/personnel/${employeeDetails?.id}`} replace />
         } />
         <Route path=":employeeId" element={<PersonnelDetailView />} />
     </Routes>

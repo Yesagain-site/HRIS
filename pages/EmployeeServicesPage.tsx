@@ -21,12 +21,21 @@ const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
   const getStatusConfig = () => {
     switch (status) {
       case 'Approved':
+      case 'Resigned': // Add this
         return {
           bg: 'bg-emerald-50',
           text: 'text-emerald-700',
           border: 'border-emerald-200',
           icon: CheckCircleIcon,
-          label: 'Approved'
+          label: status // This will show "Resigned" for resignation requests
+        };
+      case 'Under Resignation': // Add this
+        return {
+          bg: 'bg-orange-50',
+          text: 'text-orange-700',
+          border: 'border-orange-200',
+          icon: ClockIcon,
+          label: 'Under Resignation'
         };
       case 'Rejected':
         return {
@@ -92,12 +101,21 @@ const RequestCard: React.FC<{
 }> = ({ request, type, canManage, onApprove, onReject }) => {
   const getRequestIcon = () => {
     switch (type) {
-      case 'leave': return CalendarDaysIcon;  
+      case 'leave': return CalendarDaysIcon;
       case 'permission': return ClockIcon;
       case 'cash': return CurrencyDollarIcon;
       case 'resignation': return DocumentTextIcon;
       default: return BriefcaseIcon;
     }
+  };
+
+  // ✅ ADD THIS HELPER FUNCTION
+  const getDisplayStatus = () => {
+    if (type === 'resignation') {
+      if (request.status === 'Pending') return 'Under Resignation';
+      if (request.status === 'Approved') return 'Resigned';
+    }
+    return request.status;
   };
 
   const getRequestDetails = () => {
@@ -167,6 +185,7 @@ const RequestCard: React.FC<{
 
   const Icon = getRequestIcon();
   const details = getRequestDetails();
+  const displayStatus = getDisplayStatus(); // ✅ USE THE HELPER FUNCTION
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 p-6 hover:shadow-lg transition-all duration-200 group">
@@ -181,7 +200,8 @@ const RequestCard: React.FC<{
             <p className="text-sm text-gray-500 mt-0.5">{details.subtitle}</p>
           </div>
         </div>
-        <StatusBadge status={request.status} />
+        {/* ✅ USE displayStatus INSTEAD OF request.status */}
+        <StatusBadge status={displayStatus} />
       </div>
 
       {/* Details */}
