@@ -260,6 +260,21 @@ const EmployeeDashboard: React.FC = () => {
     );
   }
 
+  const getFullName = () => {
+    if (employeeDetails) {
+      const fullName = [
+        employeeDetails.firstName,
+        employeeDetails.middleName,
+        employeeDetails.lastName
+      ]
+        .filter(name => name && name !== 'null' && name !== 'undefined' && name.trim() !== '')
+        .join(' ');
+      
+      return fullName || employeeDetails.email || currentUser?.username || 'Employee';
+    }
+    return currentUser?.username || 'Employee';
+  };
+
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Top Welcome Banner */}
@@ -271,7 +286,7 @@ const EmployeeDashboard: React.FC = () => {
                 <Sparkles className="w-8 h-8 text-white" />
               </div>
               <div>
-                <h1 className="text-3xl font-bold">{greeting}, {employeeDetails?.firstName || currentUser?.username || 'Employee'}!</h1>
+                <h1 className="text-3xl font-bold">{greeting}, {getFullName()}!</h1>
                 <p className="text-white/80 text-lg">{employeeDetails?.designation || 'Employee'} • {employeeDetails?.department || 'General'}</p>
               </div>
             </div>
