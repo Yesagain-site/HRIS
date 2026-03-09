@@ -52,6 +52,10 @@ export class UpdateEmployeeDto {
 
   @IsOptional()
   @IsString()
+  status?: string;
+
+  @IsOptional()
+  @IsString()
   joiningDate?: string;
 
   @IsOptional()

@@ -4,12 +4,14 @@ import { Model, Types } from 'mongoose'; // Add Types import
 import { ServiceRequest } from './schemas/service-request.schema';
 import { CreateServiceRequestDto } from './dto/create-service.dto';
 import { UpdateServiceRequestStatusDto } from './dto/update-service-request-status.dto';
+import { EmployeesService } from '../employees/employees.service';  
 
 @Injectable()
 export class ServiceRequestsService {
   constructor(
     @InjectModel(ServiceRequest.name)
     private serviceRequestModel: Model<ServiceRequest>,
+    private employeesService: EmployeesService,
   ) {}
 
   async create(dto: CreateServiceRequestDto, userId: string) {
@@ -97,12 +99,34 @@ export class ServiceRequestsService {
     }
 
     request.status = dto.status;
-    request.approverId = new Types.ObjectId(userId); // Convert to ObjectId
+    request.approverId = new Types.ObjectId(userId);
     request.approverName = userName;
     request.approvalDate = new Date();
     request.managerNotes = dto.managerNotes || '';
 
     const updated = await request.save();
+    
+    // ✅ NEW: If this is a resignation request that was approved, update employee status
+    if (request.requestType === 'resignation' && dto.status === 'Approved') {
+      try {
+        // Get the employee
+        const employee = await this.employeesService.findOne(request.employeeId.toString());
+        
+        if (employee) {
+          // Update employee status to Resigned
+          await this.employeesService.update(
+            request.employeeId.toString(),
+            { workStatus: 'Resigned' },
+            userId
+          );
+          console.log(`✅ Employee ${employee.firstName} status updated to Resigned`);
+        }
+      } catch (error) {
+        console.error('❌ Failed to update employee status:', error);
+        // Don't throw - we still want to return the updated request
+      }
+    }
+
     const result = updated.toObject() as any;
     return {
       ...result,
@@ -113,6 +137,7 @@ export class ServiceRequestsService {
       updatedBy: result.updatedBy?.toString(),
     };
   }
+
 
   async remove(id: string) {
     if (!Types.ObjectId.isValid(id)) {
