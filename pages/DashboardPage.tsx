@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useHRData } from '../hooks/useHRData';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { WorkStatus } from '../hooks/useHRData'; // Import the enum if needed
+import { WorkStatus } from '../hooks/useHRData';
 import { Modal } from '../components/UI';
 import { BellIcon } from '../components/Icons';
 import { Link } from 'react-router-dom';
@@ -17,6 +17,7 @@ const DashboardPage: React.FC = () => {
   // State for department modal
   const [selectedDepartment, setSelectedDepartment] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isAllDepartmentsModalOpen, setIsAllDepartmentsModalOpen] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
   
   console.log('Dashboard Data:', {
@@ -30,19 +31,62 @@ const DashboardPage: React.FC = () => {
   const totalHeadcount = employees.length;
   const activeEmployees = employees.filter(emp => emp.workStatus === 'Active').length;
   
-  // Group by department
+  // Group by department with case-insensitive and trim handling
   const departmentCounts: Record<string, number> = {};
   const employeesByDepartment: Record<string, any[]> = {};
   
   employees.forEach(emp => {
-    const dept = emp.department || 'Unassigned';
-    departmentCounts[dept] = (departmentCounts[dept] || 0) + 1;
+    const rawDept = emp.department || 'Unassigned';
+    const normalizedDept = rawDept.trim();
+    const deptKey = normalizedDept.toLowerCase();
     
-    // Store employees by department for modal display
-    if (!employeesByDepartment[dept]) {
-      employeesByDepartment[dept] = [];
+    departmentCounts[deptKey] = (departmentCounts[deptKey] || 0) + 1;
+    
+    if (!employeesByDepartment[normalizedDept]) {
+      employeesByDepartment[normalizedDept] = [];
     }
-    employeesByDepartment[dept].push(emp);
+    employeesByDepartment[normalizedDept].push(emp);
+  });
+  
+  // Create display map for departments
+  const deptDisplayMap: Record<string, string> = {};
+  employees.forEach(emp => {
+    const dept = (emp.department || 'Unassigned').trim();
+    if (dept) {
+      const deptLower = dept.toLowerCase();
+      if (!deptDisplayMap[deptLower]) {
+        deptDisplayMap[deptLower] = dept;
+      }
+    }
+  });
+  
+  // Build display counts
+  const displayDepartmentCounts: Record<string, number> = {};
+  Object.entries(departmentCounts).forEach(([deptKey, count]) => {
+    const displayName = deptDisplayMap[deptKey] || 
+                        deptKey.charAt(0).toUpperCase() + deptKey.slice(1);
+    displayDepartmentCounts[displayName] = count;
+  });
+  
+  // Sort departments alphabetically
+  const sortedDepartments = Object.entries(displayDepartmentCounts)
+    .sort(([a], [b]) => a.localeCompare(b));
+  
+  // Get first 5 departments for display
+  const displayedDepartments = sortedDepartments.slice(0, 5);
+  const remainingDepartments = sortedDepartments.slice(5);
+  
+  // Rebuild employeesByDepartment with consistent names
+  const consolidatedEmployeesByDepartment: Record<string, any[]> = {};
+  employees.forEach(emp => {
+    const rawDept = emp.department || 'Unassigned';
+    const deptLower = rawDept.trim().toLowerCase();
+    const displayDept = deptDisplayMap[deptLower] || rawDept.trim();
+    
+    if (!consolidatedEmployeesByDepartment[displayDept]) {
+      consolidatedEmployeesByDepartment[displayDept] = [];
+    }
+    consolidatedEmployeesByDepartment[displayDept].push(emp);
   });
   
   // Calculate attendance for today
@@ -59,6 +103,13 @@ const DashboardPage: React.FC = () => {
     setIsModalOpen(true);
   };
   
+  // Handle employee click - redirect to personnel with employee data
+  const handleEmployeeClick = (employeeId: string) => {
+    setIsModalOpen(false);
+    // Navigate to personnel page with employee ID to highlight/select that employee
+    navigate(`/admin/personnel/${employeeId}`);
+  };
+  
   // Close modal
   const handleCloseModal = () => {
     setIsModalOpen(false);
@@ -66,7 +117,7 @@ const DashboardPage: React.FC = () => {
   };
   
   // Get employees for selected department
-  const departmentEmployees = selectedDepartment ? employeesByDepartment[selectedDepartment] || [] : [];
+  const departmentEmployees = selectedDepartment ? consolidatedEmployeesByDepartment[selectedDepartment] || [] : [];
   
   // Sort employees by name
   const sortedEmployees = [...departmentEmployees].sort((a, b) => 
@@ -82,6 +133,9 @@ const DashboardPage: React.FC = () => {
     
     setPendingCount(totalPending);
   }, [leaveRequests, permissionRequests, cashAdvanceRequests, resignationRequests]);
+
+  // Calculate system users stats
+  const activeUsers = users.filter(u => u.isActive).length;
   
   return (
     <div className="space-y-6">
@@ -97,7 +151,8 @@ const DashboardPage: React.FC = () => {
               {sortedEmployees.map((emp) => (
                 <div 
                   key={emp.id} 
-                  className="p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                  className="p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer"
+                  onClick={() => handleEmployeeClick(emp.id)}
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-3">
@@ -105,7 +160,7 @@ const DashboardPage: React.FC = () => {
                         {emp.firstName?.[0]}{emp.lastName?.[0]}
                       </div>
                       <div>
-                        <p className="font-medium text-gray-900">
+                        <p className="font-medium text-gray-900 hover:text-indigo-600">
                           {emp.firstName} {emp.middleName || ''} {emp.lastName}
                         </p>
                         <div className="flex items-center space-x-2 text-sm text-gray-500">
@@ -160,6 +215,47 @@ const DashboardPage: React.FC = () => {
           </button>
         </div>
       </Modal>
+
+      {/* All Departments Modal */}
+      <Modal 
+        isOpen={isAllDepartmentsModalOpen} 
+        onClose={() => setIsAllDepartmentsModalOpen(false)}
+        title={`All Departments (${sortedDepartments.length} departments)`}
+      >
+        <div className="max-h-96 overflow-y-auto">
+          <div className="space-y-2">
+            {sortedDepartments.map(([dept, count]) => (
+              <div 
+                key={dept} 
+                className="flex justify-between items-center p-3 hover:bg-gray-50 rounded-lg cursor-pointer transition-colors"
+                onClick={() => {
+                  setIsAllDepartmentsModalOpen(false);
+                  handleDepartmentClick(dept);
+                }}
+              >
+                <span className="text-gray-700 font-medium">{dept}</span>
+                <div className="flex items-center space-x-3">
+                  <span className="bg-indigo-100 text-indigo-700 px-2.5 py-1 rounded-full text-xs font-medium">
+                    {count} {count === 1 ? 'employee' : 'employees'}
+                  </span>
+                  <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        
+        <div className="mt-4 flex justify-end">
+          <button
+            onClick={() => setIsAllDepartmentsModalOpen(false)}
+            className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
+          >
+            Close
+          </button>
+        </div>
+      </Modal>
     
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold text-gray-800">Dashboard</h1>
@@ -196,13 +292,13 @@ const DashboardPage: React.FC = () => {
           </div>
         </div>
         
-        {/* Departments Card */}
+        {/* Departments Card - with clickable +12 more */}
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Departments</p>
               <p className="text-3xl font-bold text-gray-900 mt-2">
-                {Object.keys(departmentCounts).length}
+                {sortedDepartments.length}
               </p>
             </div>
             <div className="p-3 bg-green-100 rounded-lg">
@@ -212,7 +308,7 @@ const DashboardPage: React.FC = () => {
             </div>
           </div>
           <div className="mt-4 space-y-2">
-            {Object.entries(departmentCounts).slice(0, 5).map(([dept, count]) => (
+            {displayedDepartments.map(([dept, count]) => (
               <div 
                 key={dept} 
                 className="flex justify-between items-center p-2 hover:bg-gray-50 rounded-md cursor-pointer transition-colors"
@@ -222,10 +318,13 @@ const DashboardPage: React.FC = () => {
                 <span className="font-medium bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full text-xs">{count}</span>
               </div>
             ))}
-            {Object.keys(departmentCounts).length > 5 && (
-              <div className="text-sm text-gray-500 text-center pt-2">
-                +{Object.keys(departmentCounts).length - 5} more departments
-              </div>
+            {remainingDepartments.length > 0 && (
+              <button
+                onClick={() => setIsAllDepartmentsModalOpen(true)}
+                className="w-full text-sm text-indigo-600 hover:text-indigo-800 text-center pt-2 font-medium hover:underline focus:outline-none"
+              >
+                +{remainingDepartments.length} more departments
+              </button>
             )}
           </div>
         </div>
@@ -263,7 +362,7 @@ const DashboardPage: React.FC = () => {
           </div>
         </div>
         
-        {/* Users Card */}
+        {/* System Users Card - Dynamic */}
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex items-center justify-between">
             <div>
@@ -272,7 +371,7 @@ const DashboardPage: React.FC = () => {
             </div>
             <div className="p-3 bg-purple-100 rounded-lg">
               <svg className="h-8 w-8 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
               </svg>
             </div>
           </div>
@@ -280,7 +379,11 @@ const DashboardPage: React.FC = () => {
             <div className="text-sm text-gray-600">
               <div className="flex justify-between">
                 <span>Active users:</span>
-                <span className="font-medium">{users.filter(u => u.isActive).length}</span>
+                <span className="font-medium">{activeUsers}</span>
+              </div>
+              <div className="flex justify-between mt-1">
+                <span>Inactive users:</span>
+                <span className="font-medium">{users.length - activeUsers}</span>
               </div>
               <div className="flex justify-between mt-1">
                 <span>Roles:</span>
@@ -293,26 +396,26 @@ const DashboardPage: React.FC = () => {
       
       {/* Charts/Graphs Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Department Distribution - Clickable Bars */}
+        {/* Department Distribution */}
         <div className="bg-white rounded-lg shadow p-6">
           <h2 className="text-lg font-semibold text-gray-800 mb-4">Headcount by Department</h2>
-          <div className="space-y-3">
-            {Object.entries(departmentCounts).map(([dept, count]) => (
+          <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
+            {sortedDepartments.map(([dept, count]) => (
               <div 
                 key={dept} 
                 className="flex items-center cursor-pointer group"
                 onClick={() => handleDepartmentClick(dept)}
               >
-                <div className="w-32 text-sm text-gray-600 group-hover:text-indigo-600 transition-colors">{dept}</div>
+                <div className="w-32 text-sm text-gray-600 group-hover:text-indigo-600 transition-colors truncate" title={dept}>{dept}</div>
                 <div className="flex-1 ml-4">
                   <div className="h-8 bg-gray-200 rounded-full overflow-hidden relative group-hover:bg-gray-300 transition-colors">
                     <div 
                       className="h-full bg-blue-500 rounded-full group-hover:bg-blue-600 transition-colors flex items-center justify-end px-3"
                       style={{ width: `${(count / totalHeadcount) * 100}%` }}
                     >
-                      {((count / totalHeadcount) * 100) > 15 && (
+                      {((count / totalHeadcount) * 100) > 10 && (
                         <span className="text-xs text-white font-medium opacity-0 group-hover:opacity-100 transition-opacity">
-                          Click to view
+                          {count} employees
                         </span>
                       )}
                     </div>
@@ -321,7 +424,7 @@ const DashboardPage: React.FC = () => {
                 <div className="w-12 text-right font-medium group-hover:text-indigo-600">{count}</div>
               </div>
             ))}
-            {Object.keys(departmentCounts).length === 0 && (
+            {sortedDepartments.length === 0 && (
               <div className="text-center py-8 text-gray-500">
                 No department data available
               </div>
@@ -363,19 +466,31 @@ const DashboardPage: React.FC = () => {
       <div className="bg-white rounded-lg shadow p-6">
         <h2 className="text-lg font-semibold text-gray-800 mb-4">Quick Actions</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <button className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+          <button 
+            onClick={() => navigate('/personnel?action=add')}
+            className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
+          >
             <div className="text-blue-600 font-medium">Add Employee</div>
             <div className="text-sm text-gray-600 mt-1">Create new employee record</div>
           </button>
-          <button className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+          <button 
+            onClick={() => navigate('/attendance')}
+            className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
+          >
             <div className="text-green-600 font-medium">Record Attendance</div>
             <div className="text-sm text-gray-600 mt-1">Mark today's attendance</div>
           </button>
-          <button className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+          <button 
+            onClick={() => navigate('/payroll')}
+            className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
+          >
             <div className="text-purple-600 font-medium">Generate Payroll</div>
             <div className="text-sm text-gray-600 mt-1">Process monthly payroll</div>
           </button>
-          <button className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+          <button 
+            onClick={() => navigate('/reports')}
+            className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
+          >
             <div className="text-yellow-600 font-medium">View Reports</div>
             <div className="text-sm text-gray-600 mt-1">Generate HR reports</div>
           </button>

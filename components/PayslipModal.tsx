@@ -683,15 +683,33 @@ const PayslipModal: React.FC<PayslipModalProps> = ({
                       <tbody>
                         <tr><td className="py-1">Basic Salary</td><td className="text-right font-mono">{formatCurrency((currentEmployee.ctc / currentEmployee.totalDays) * currentEmployee.workedDays)}</td></tr>
                         <tr><td className="py-1">Leave Salary</td><td className="text-right font-mono">{formatCurrency(currentEmployee.leaveSalary)}</td></tr>
-                        <tr><td className="py-1">Off Day</td><td className="text-right font-mono">{formatCurrency(currentEmployee.offDayAmount)}</td></tr>
-                        <tr><td className="py-1">Holiday</td><td className="text-right font-mono">{formatCurrency(currentEmployee.holidayAmount)}</td></tr>
-                        <tr><td className="py-1">Overtime</td><td className="text-right font-mono">{formatCurrency(currentEmployee.overtimeAmount)}</td></tr>
+                        <tr>
+                        <td className="py-1">Off Day Worked</td>
+                        <td className="text-right font-mono">
+                        {currentEmployee.offDaysWorked} Days | {formatCurrency(currentEmployee.offDayAmount)}
+                        </td>
+                        </tr>
+
+                        <tr>
+                        <td className="py-1">Holiday Worked</td>
+                        <td className="text-right font-mono">
+                        {currentEmployee.holidayWorked} Days | {formatCurrency(currentEmployee.holidayAmount)}
+                        </td>
+                        </tr>
+
+                        <tr>
+                        <td className="py-1">Overtime</td>
+                        <td className="text-right font-mono">
+                        {currentEmployee.overtimeHours} Hrs | {formatCurrency(currentEmployee.overtimeAmount)}
+                        </td>
+                        </tr>
+
                         <tr><td className="py-1">Manager Extra</td><td className="text-right font-mono">{formatCurrency(currentEmployee.extraFromManager)}</td></tr>
                         <tr><td className="py-1">Back Payment</td><td className="text-right font-mono">{formatCurrency(currentEmployee.backPayment)}</td></tr>
                         <tr className="font-bold border-t"><td className="pt-2">TOTAL</td><td className="text-right pt-2 text-green-700">{formatCurrency(currentEmployee.totalJanuarySalary)}</td></tr>
                       </tbody>
                     </table>
-                  </div>
+                  </div> 
 
                   <div className="border rounded-lg p-4">
                     <h3 className="font-semibold mb-3 text-red-700">Deductions</h3>
@@ -699,9 +717,27 @@ const PayslipModal: React.FC<PayslipModalProps> = ({
                       <tbody>
                         <tr><td className="py-1">Cash Advance</td><td className="text-right font-mono">{formatCurrency(currentEmployee.cashAdvance)}</td></tr>
                         <tr><td className="py-1">Visa Cost</td><td className="text-right font-mono">{formatCurrency(currentEmployee.visaCost)}</td></tr>
-                        <tr><td className="py-1">Auth Absences</td><td className="text-right font-mono">{formatCurrency(currentEmployee.authAbsenceDeduction)}</td></tr>
-                        <tr><td className="py-1">Unauth Absences</td><td className="text-right font-mono">{formatCurrency(currentEmployee.unauthAbsenceDeduction)}</td></tr>
-                        <tr><td className="py-1">Tardiness</td><td className="text-right font-mono">{formatCurrency(currentEmployee.tardiness)}</td></tr>
+                        <tr>
+                        <td className="py-1">Authorized Absence</td>
+                        <td className="text-right font-mono">
+                        {currentEmployee.absences} Days | {formatCurrency(currentEmployee.authAbsenceDeduction)}
+                        </td>
+                        </tr>
+
+                        <tr>
+                        <td className="py-1">Unauthorized Absence</td>
+                        <td className="text-right font-mono">
+                        {currentEmployee.unauthorizedAbsences} Days | {formatCurrency(currentEmployee.unauthAbsenceDeduction)}
+                        </td>
+                        </tr>
+
+                        <tr>
+                        <td className="py-1">Late Hours</td>
+                        <td className="text-right font-mono">
+                        {currentEmployee.lateHours} Hrs | {formatCurrency(currentEmployee.tardiness)}
+                        </td>
+                        </tr>
+                        
                         <tr><td className="py-1">Fines</td><td className="text-right font-mono">{formatCurrency(currentEmployee.fines)}</td></tr>
                         <tr><td className="py-1">Cleaning</td><td className="text-right font-mono">{formatCurrency(currentEmployee.cleaningFees)}</td></tr>
                         <tr className="font-bold border-t"><td className="pt-2">TOTAL</td><td className="text-right pt-2 text-red-700">{formatCurrency(currentEmployee.deductions)}</td></tr>
