@@ -577,7 +577,7 @@ const PayrollPage: React.FC = () => {
 
 
 
-  // ============= GENERATE PAYROLL =============
+  // ============= GENERATE PAYROLL - FIXED VERSION =============
   const handleGeneratePayroll = useCallback(async () => {
     if (isGenerating.current) {
       console.log('⏳ Generation already in progress');
@@ -599,43 +599,95 @@ const PayrollPage: React.FC = () => {
     
     try {
       console.log('💾 Generating payroll...');
+      console.log('📊 Current entries before generation:', payrollEntries.map(e => ({
+        name: e.name,
+        visaCost: e.visaCost,
+        absences: e.absences,
+        lateHours: e.lateHours,
+        allDeductions: e.allDeductions,
+        januaryNetSalary: e.januaryNetSalary
+      })));
       
-      // Calculate all entries locally first
-      const calculatedEntries = payrollEntries.map(entry => calculateEntryLocally(entry));
-      
-      // Update each entry in the database
       let updateCount = 0;
       const updatePromises = [];
       
-      for (const entry of calculatedEntries) {
+      for (const entry of payrollEntries) {
         if (!entry.id.startsWith('temp-')) {
           console.log(`📤 Finalizing entry ${entry.id} for ${entry.name}`);
           
+          // ⭐ CRITICAL FIX: Send ALL fields to the backend
+          // This preserves every single value
           const updateData = {
-            offDaysWorked: entry.offDaysWorked,
-            holidayWorked: entry.holidayWorked,
-            leaveSalary: entry.leaveSalary,
-            cashAdvance: entry.cashAdvance,
-            penaltyPoints: entry.penaltyPoints,
-            visaCost: entry.visaCost,
-            fines: entry.fines,
-            cleaningFees: entry.cleaningFees,
+            // Attendance fields
             absences: entry.absences,
             unauthorizedAbsences: entry.unauthorizedAbsences,
             lateHours: entry.lateHours,
             overtimeHours: entry.overtimeHours,
+            leaveTaken: entry.leaveTaken,
+            workedDays: entry.workedDays,
+            
+            // Deduction fields
+            visaCost: entry.visaCost,
+            fines: entry.fines,
+            cleaningFees: entry.cleaningFees,
+            authAbsenceDeduction: entry.authAbsenceDeduction,
+            unauthAbsenceDeduction: entry.unauthAbsenceDeduction,
+            tardiness: entry.tardiness,
+            allDeductions: entry.allDeductions,
+            
+            // Earning fields
+            offDaysWorked: entry.offDaysWorked,
+            offDayAmount: entry.offDayAmount,
+            holidayWorked: entry.holidayWorked,
+            holidayAmount: entry.holidayAmount,
+            leaveSalary: entry.leaveSalary,
+            cashAdvance: entry.cashAdvance,
+            penaltyPoints: entry.penaltyPoints,
+            total: entry.total,
+            
+            // Rate fields
+            dailyRate: entry.dailyRate,
+            hourlyRate: entry.hourlyRate,
+            
+            // Overtime fields
+            overtimeAmount: entry.overtimeAmount,
+            netDeductions: entry.netDeductions,
+            
+            // Additional fields
             extraFromManager: entry.extraFromManager,
             backPayment: entry.backPayment,
             finalModification: entry.finalModification,
             hrNotes: entry.hrNotes,
+            
+            // Net salary fields
+            januaryNetSalary: entry.januaryNetSalary,
+            targetRate: entry.targetRate,
+            totalJanuarySalary: entry.totalJanuarySalary,
+            
+            // Final calculation fields
+            beforeOT: entry.beforeOT,
+            ot: entry.ot,
+            totalCalculated: entry.totalCalculated,
+            dfrnce: entry.dfrnce,
+            deductions: entry.deductions,
+            inDays: entry.inDays,
+            
+            // Status fields
             isEditable: false,
             isCalculated: true
           };
           
+          console.log(`📤 Sending ALL fields for ${entry.name}:`, {
+            visaCost: updateData.visaCost,
+            absences: updateData.absences,
+            lateHours: updateData.lateHours,
+            januaryNetSalary: updateData.januaryNetSalary
+          });
+          
           updatePromises.push(
             api.updatePayrollEntry(entry.id, updateData)
-              .then(() => {
-                console.log(`✅ Updated entry ${entry.id}`);
+              .then((response) => {
+                console.log(`✅ Updated entry ${entry.id} - response:`, response);
                 updateCount++;
               })
           );
@@ -643,32 +695,24 @@ const PayrollPage: React.FC = () => {
       }
       
       await Promise.all(updatePromises);
-      console.log(`✅ All ${updateCount} entries updated`);
+      console.log(`✅ All ${updateCount} entries updated successfully`);
       
-      // Try to mark period as generated, but don't fail if it doesn't work
+      // Try to mark period as generated
       try {
         console.log(`📤 Calling generatePayroll for period ${payrollPeriodId}`);
         const generateResponse = await api.generatePayroll(payrollPeriodId);
         console.log('📦 Generate response:', generateResponse);
       } catch (genError: any) {
         console.warn('⚠️ generatePayroll failed, but entries are already updated:', genError.message);
-        
-        // Even if generatePayroll fails, the entries are locked
-        // We can still update the UI
       }
       
-      // Update UI state regardless of API result
+      // Update UI state
       setPeriodStatus('generated');
-      setPayrollEntries(prev => prev.map(entry => ({
-        ...entry,
-        status: 'generated',
-        isEditable: false
-      })));
+      
+      // IMPORTANT: After generation, reload data from server to ensure consistency
+      await loadPayrollData();
       
       alert(`✅ Payroll generated and locked for ${updateCount} employees!`);
-      
-      // Reload data to ensure consistency
-      await loadPayrollData();
       
     } catch (error: any) {
       console.error('❌ Error generating payroll:', error);
@@ -677,7 +721,7 @@ const PayrollPage: React.FC = () => {
       setIsSaving(false);
       isGenerating.current = false;
     }
-  }, [payrollPeriodId, payrollEntries, calculateEntryLocally, loadPayrollData, periodStatus]);
+  }, [payrollPeriodId, payrollEntries, periodStatus, loadPayrollData]);
 
   // ============= CLEAR DATA =============
   const handleClearData = useCallback(async () => {
